@@ -33,8 +33,9 @@ pieces are, how they fit together, and the seams we intend to extend.
    owns image I/O, tensor conversion, and orchestrates the backbone call.
 3. **Backbone** (`metalgrow.backbones`) is the actual super-resolution
    operation. `bicubic` is always available (no weights); learned
-   backbones like `realesrgan-x2` / `realesrgan-x4` load weights via
-   `metalgrow.weights` and run through spandrel.
+   backbones (`realesrgan-x2` / `realesrgan-x4`, `swinir-x2` /
+   `swinir-x4`) load weights via `metalgrow.weights` and run through
+   spandrel.
 4. **Device** (`metalgrow.device`) picks the torch device once per process
    using a strict preference order.
 
@@ -56,13 +57,26 @@ This module **never** imports model code — it stays cheap so tests and CLI
 
 The `Upscaler` class is the public API. Responsibilities:
 
-- Hold the resolved `torch.device`.
+- Hold the resolved `torch.device` and a single `Backbone` instance.
 - Convert PIL → float tensor in `[0, 1]`, run the backbone, convert back.
+- **Alpha handling.** When the input has an alpha channel and the
+  backbone advertises `input_channels == 3`, `Upscaler` runs the
+  backbone on the RGB plane and bicubic-upscales the alpha channel
+  separately, then recombines. Alpha is out-of-distribution for
+  RGB-trained SR models, so this preserves transparency without
+  corrupting it.
+- **Tiled inference.** `_tiled_forward` slices the input into crops of
+  `backbone.default_tile` with `backbone.default_tile_pad` pixels of
+  context on each non-boundary edge, runs the backbone per tile, and
+  blends overlaps with a linear feather weight. Triggered
+  automatically when either image dimension exceeds the tile size, or
+  explicitly via `tile=` / `tile_pad=` kwargs.
 - Clamp outputs and return a PIL image.
 - Provide a file-level convenience (`upscale_file`) used by the CLI.
 
-The backbone call is intentionally a single line so swapping backbones
-doesn't reshape the surrounding code.
+`Upscaler` never contains model logic. Swapping backbones doesn't
+reshape the surrounding code because every backbone honours the same
+`upscale(tensor, scale)` contract.
 
 ### `metalgrow.backbones`
 
@@ -78,16 +92,26 @@ Small registry + cache layer for weight files. Downloads on first use,
 verifies SHA-256 on every call, removes corrupt files so a retry can
 re-download. Cache location overridable via `METALGROW_CACHE_DIR`.
 
+### `metalgrow.batch`
+
+Directory / glob batch mode. Wraps `Upscaler` for multi-file runs with
+progress reporting and skip-existing logic. The CLI `upscale` command
+delegates to this module when `SRC` is a directory or glob.
+
 ### `metalgrow.cli`
 
-A thin `typer` app. Two commands:
+A thin `typer` app. Commands:
 
-- `upscale SRC DST --scale --device --backbone --dtype` — the real work.
+- `upscale SRC DST --scale --device --backbone --dtype --tile --tile-pad`
+  — the real work. Accepts a single file or a directory/glob (batch
+  mode via `metalgrow.batch`).
 - `info` — prints torch version and backend availability. Useful for
   verifying MPS is picked up on a fresh Apple Silicon machine.
+- `models {list,download,rm}` — inspects and manages the weight cache
+  under `~/.cache/metalgrow/` (or `$METALGROW_CACHE_DIR`).
 
 The CLI must never contain model logic. If a flag needs model state, it
-belongs on `Upscaler`.
+belongs on `Upscaler` (or `batch` for multi-file orchestration).
 
 ## Extension points
 
@@ -102,18 +126,33 @@ on the CLI, nothing extra is needed: `--backbone` reads from the registry.
 
 ### Tiled inference
 
-`RealESRGANBackbone` tiles 256×256 with a 16-px overlap to bound memory on
-large inputs. Tiling lives on the backbone rather than `Upscaler` because
-the optimal tile size is backbone-specific (receptive field, VRAM
-profile). The bicubic backbone needs no tiling.
+Tiling is **backbone-agnostic** and lives on `Upscaler._tiled_forward`.
+Each backbone declares its optimal tile geometry through two class vars:
+
+- `default_tile` — tile edge length in input pixels (e.g. 256 for
+  Real-ESRGAN, 128 for SwinIR; `0` disables tiling, used by `bicubic`).
+- `default_tile_pad` — context pad in input pixels around each tile,
+  sized to the backbone's effective receptive field.
+
+`Upscaler` reads these defaults on every call and auto-tiles when
+either input dimension exceeds `default_tile`. Callers can override
+either value per-call via `upscale(..., tile=, tile_pad=)`. Overlapping
+regions are blended with a linear feather weight, so residual edge
+mismatches fade instead of appearing as hard seams.
+
+The rationale for centralising tiling (despite tile size being
+backbone-specific): tile *strategy* — padding, feathering, seam
+blending, memory accumulation — is shared across every learned
+backbone. Backbones only choose the parameters, not the control flow.
 
 ### Model registry
 
 `metalgrow.weights.REGISTRY` maps a backbone name to a `WeightSpec`
 (filename, URL, SHA-256). `ensure_weight(name)` downloads into
 `~/.cache/metalgrow/` on first use and verifies the checksum every call.
-Override the cache location with `METALGROW_CACHE_DIR`. A CLI subcommand
-for listing/removing cached weights is future work.
+Override the cache location with `METALGROW_CACHE_DIR`. The
+`metalgrow models {list,download,rm}` CLI inspects and manages the
+cache.
 
 ## Device notes
 
