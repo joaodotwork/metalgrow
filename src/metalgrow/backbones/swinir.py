@@ -7,15 +7,19 @@ from metalgrow.backbones.registry import register
 from metalgrow.weights import ensure_weight
 
 
-class RealESRGANBackbone(Backbone):
-    """Real-ESRGAN RRDBNet backbone loaded via :mod:`spandrel`."""
+class SwinIRBackbone(Backbone):
+    """SwinIR (Swin Transformer) backbone loaded via :mod:`spandrel`.
 
-    name = "realesrgan"
+    SwinIR trades more memory and latency for generally sharper outputs than
+    Real-ESRGAN on clean, photographic content. Attention-heavy, so we tile
+    at a smaller default than Real-ESRGAN to keep per-tile activations in
+    VRAM on the target device.
+    """
+
+    name = "swinir"
     supported_scales = (2.0, 4.0)
     input_channels = 3
-    # Real-ESRGAN is convolutional; the Upscaler-level tiler wraps the forward
-    # call with overlap padding large enough to cover the receptive field.
-    default_tile = 256
+    default_tile = 128
     default_tile_pad = 16
 
     def __init__(self, device: torch.device, dtype: torch.dtype, registry_key: str):
@@ -44,11 +48,11 @@ class RealESRGANBackbone(Backbone):
 
 
 def _factory(registry_key: str):
-    def make(device: torch.device, dtype: torch.dtype) -> RealESRGANBackbone:
-        return RealESRGANBackbone(device, dtype, registry_key=registry_key)
+    def make(device: torch.device, dtype: torch.dtype) -> SwinIRBackbone:
+        return SwinIRBackbone(device, dtype, registry_key=registry_key)
 
     return make
 
 
-register("realesrgan-x2", _factory("realesrgan-x2"))
-register("realesrgan-x4", _factory("realesrgan-x4"))
+register("swinir-x2", _factory("swinir-x2"))
+register("swinir-x4", _factory("swinir-x4"))
