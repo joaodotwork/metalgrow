@@ -4,6 +4,7 @@ import torch
 import typer
 
 from metalgrow.backbones import list_backbones
+from metalgrow.batch import discover_inputs, plan_outputs, run_batch
 from metalgrow.upscaler import Upscaler
 from metalgrow.weights import (
     REGISTRY,
@@ -19,8 +20,8 @@ app = typer.Typer(help="metalgrow — AI image upscaler on Apple Metal.")
 
 @app.command()
 def upscale(
-    src: Path = typer.Argument(..., exists=True, readable=True),
-    dst: Path = typer.Argument(...),
+    src: str = typer.Argument(..., help="Image file, directory, or glob (e.g. 'in/*.png')"),
+    dst: Path = typer.Argument(..., help="Output file (single src) or directory (batch)"),
     scale: float = typer.Option(2.0, "--scale", "-s", min=1.01, max=8.0),
     device: str = typer.Option("auto", "--device", "-d", help="auto | mps | cuda | cpu"),
     backbone: str = typer.Option(
@@ -38,15 +39,52 @@ def upscale(
     tile_pad: int | None = typer.Option(
         None, "--tile-pad", help="Context padding per tile edge (omit = backbone default)"
     ),
+    skip_existing: bool = typer.Option(
+        False, "--skip-existing", help="Skip outputs that already exist (batch mode)"
+    ),
+    workers: int = typer.Option(
+        4, "--workers", "-j", min=1, help="Parallel I/O workers (inference stays serial)"
+    ),
 ):
     if dtype not in _DTYPES:
         raise typer.BadParameter(f"dtype must be one of {list(_DTYPES)}")
+    try:
+        inputs = discover_inputs(src)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(f"source not found: {exc}") from None
+    if not inputs:
+        raise typer.BadParameter(f"no images found at {src!r}")
+
     upscaler = Upscaler(backbone=backbone, device=device, dtype=_DTYPES[dtype])
     typer.echo(f"device: {upscaler.device}")
     typer.echo(f"backbone: {backbone}")
     typer.echo(f"dtype: {dtype}")
-    out = upscaler.upscale_file(src, dst, scale=scale, tile=tile, tile_pad=tile_pad)
-    typer.echo(f"wrote: {out}")
+
+    batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
+
+    if not batch_mode:
+        out = upscaler.upscale_file(inputs[0], dst, scale=scale, tile=tile, tile_pad=tile_pad)
+        typer.echo(f"wrote: {out}")
+        return
+
+    if dst.exists() and not dst.is_dir():
+        raise typer.BadParameter(f"batch destination must be a directory: {dst}")
+    dst.mkdir(parents=True, exist_ok=True)
+
+    items = plan_outputs(inputs, dst)
+    result = run_batch(
+        upscaler,
+        items,
+        scale=scale,
+        tile=tile,
+        tile_pad=tile_pad,
+        workers=workers,
+        skip_existing=skip_existing,
+    )
+    typer.echo(
+        f"done: {result.processed} processed, {result.skipped} skipped, "
+        f"{result.failed} failed (of {result.total})"
+    )
 
 
 @app.command()
