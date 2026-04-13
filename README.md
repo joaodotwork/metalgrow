@@ -2,6 +2,7 @@
 
 > AI-powered image upscaler accelerated on Apple Metal (MPS).
 
+[![CI](https://github.com/joaodotwork/metalgrow/actions/workflows/ci.yml/badge.svg)](https://github.com/joaodotwork/metalgrow/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.3%2B-ee4c2c.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-MPS-000000.svg?logo=apple&logoColor=white)](https://developer.apple.com/metal/pytorch/)
