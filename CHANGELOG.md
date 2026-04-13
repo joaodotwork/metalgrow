@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-13
+
+### Fixed
+
+- **PyPI project description.** `pyproject.toml` now declares
+  `readme = "README.md"` so hatchling includes the long description in the
+  built distributions. v0.1.0 shipped without one and rendered as *"The
+  author of this package has not provided a project description"* on PyPI
+  (#26). Package contents are otherwise identical to v0.1.0.
+
 ## [0.1.0] — 2026-04-13
 
 First public release. Everything below is an introduction rather than a diff
@@ -61,5 +71,6 @@ against a prior version.
   `driver_allocated_memory`, which includes allocator pool reservations —
   interpret it as "working set size", not a strict activation peak.
 
-[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.1
 [0.1.0]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.0
