@@ -1,0 +1,6 @@
+# Development dependencies — mirrors [project.optional-dependencies].dev.
+-r requirements.txt
+
+pytest>=8.0
+ruff>=0.6
+pre-commit>=3.7

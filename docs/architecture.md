@@ -31,9 +31,10 @@ pieces are, how they fit together, and the seams we intend to extend.
 1. **CLI** (`metalgrow.cli`) parses arguments and resolves paths.
 2. **Upscaler** (`metalgrow.upscaler`) is the stable public interface. It
    owns image I/O, tensor conversion, and orchestrates the backbone call.
-3. **Backbone** is the actual super-resolution operation. Today this is
-   `torch.nn.functional.interpolate` (bicubic); tomorrow it will be a
-   learned `nn.Module` (Real-ESRGAN, SwinIR, etc.).
+3. **Backbone** (`metalgrow.backbones`) is the actual super-resolution
+   operation. `bicubic` is always available (no weights); learned
+   backbones like `realesrgan-x2` / `realesrgan-x4` load weights via
+   `metalgrow.weights` and run through spandrel.
 4. **Device** (`metalgrow.device`) picks the torch device once per process
    using a strict preference order.
 
@@ -60,14 +61,28 @@ The `Upscaler` class is the public API. Responsibilities:
 - Clamp outputs and return a PIL image.
 - Provide a file-level convenience (`upscale_file`) used by the CLI.
 
-The backbone call is intentionally a single line so it can be replaced with
-a learned model without reshaping the surrounding code.
+The backbone call is intentionally a single line so swapping backbones
+doesn't reshape the surrounding code.
+
+### `metalgrow.backbones`
+
+Package with a `Backbone` ABC, a name→factory registry, and one module
+per backbone. Each backbone accepts a `(device, dtype)` pair and exposes
+`upscale(tensor, scale)`. `supported_scales` is `None` for analytical
+resamplers (any scale) or a fixed tuple (e.g. `(2.0, 4.0)` for
+Real-ESRGAN).
+
+### `metalgrow.weights`
+
+Small registry + cache layer for weight files. Downloads on first use,
+verifies SHA-256 on every call, removes corrupt files so a retry can
+re-download. Cache location overridable via `METALGROW_CACHE_DIR`.
 
 ### `metalgrow.cli`
 
 A thin `typer` app. Two commands:
 
-- `upscale SRC DST --scale --device` — the real work.
+- `upscale SRC DST --scale --device --backbone --dtype` — the real work.
 - `info` — prints torch version and backend availability. Useful for
   verifying MPS is picked up on a fresh Apple Silicon machine.
 
@@ -78,40 +93,49 @@ belongs on `Upscaler`.
 
 ### Plugging in a learned backbone
 
-The intended replacement for the bicubic baseline is a learned `nn.Module`
-loaded once per `Upscaler` instance. The expected shape of that change:
-
-1. Add `metalgrow/backbones/realesrgan.py` exposing a `load_model(device)`
-   function that returns an `nn.Module` in `eval()` mode with weights
-   loaded from a cache directory.
-2. In `Upscaler.__init__`, load the backbone lazily (first call) so tests
-   and `metalgrow info` stay fast.
-3. Replace the `F.interpolate` call in `Upscaler.upscale` with a model
-   forward pass. Pre/post-processing (tensor layout, value range) belongs
-   on the backbone module, not in `Upscaler`.
+Backbones live in `metalgrow/backbones/` and subclass `Backbone`
+(`base.py`). Each backbone owns its own preprocess/postprocess and tiling
+strategy; `Upscaler` only knows the `upscale(tensor, scale)` contract.
+Register a new backbone by calling `register(name, factory)` at import
+time — see `bicubic.py` and `realesrgan.py` for the pattern. To expose it
+on the CLI, nothing extra is needed: `--backbone` reads from the registry.
 
 ### Tiled inference
 
-Large images won't fit in MPS memory at 4× scale. The plan is a `tile` and
-`tile_pad` parameter on `Upscaler.upscale` that slices the input, runs the
-backbone per tile, and stitches with overlap blending. This lives inside
-`Upscaler` because it's backbone-agnostic.
+`RealESRGANBackbone` tiles 256×256 with a 16-px overlap to bound memory on
+large inputs. Tiling lives on the backbone rather than `Upscaler` because
+the optimal tile size is backbone-specific (receptive field, VRAM
+profile). The bicubic backbone needs no tiling.
 
 ### Model registry
 
-Weights should not be committed. A small registry will map model names to
-download URLs + SHA256 + target path under `~/.cache/metalgrow/`. The CLI
-will gain `metalgrow models {list,download,rm}`.
+`metalgrow.weights.REGISTRY` maps a backbone name to a `WeightSpec`
+(filename, URL, SHA-256). `ensure_weight(name)` downloads into
+`~/.cache/metalgrow/` on first use and verifies the checksum every call.
+Override the cache location with `METALGROW_CACHE_DIR`. A CLI subcommand
+for listing/removing cached weights is future work.
 
 ## Device notes
 
 ### MPS quirks
 
-- Some ops still fall back to CPU silently. Keep an eye on the
-  `PYTORCH_ENABLE_MPS_FALLBACK=1` env var when adding a learned backbone.
-- `float16` on MPS is faster but numerically noisier for SR — default to
-  `float32` until we benchmark per-model.
-- `torch.compile` support on MPS is improving but not yet a default.
+The MPS backend is our primary target but still has rough edges. How
+metalgrow handles them:
+
+- **Automatic fallback.** When `get_device` resolves to MPS, it sets
+  `PYTORCH_ENABLE_MPS_FALLBACK=1` so ops missing on the MPS backend
+  silently execute on CPU instead of aborting the forward pass. Set
+  `METALGROW_DISABLE_MPS_FALLBACK=1` to opt out — useful when you want
+  hard failures to locate an unsupported op.
+- **Known op gaps.** Real-ESRGAN's RRDBNet runs end-to-end on MPS, but
+  expect occasional fallbacks on exotic kernels. The fallback is
+  transparent but adds a host↔device round-trip per affected op.
+- **`float32` default.** `fp16` on MPS is roughly 1.5–2× faster but
+  noticeably noisier for SR (halos, color banding on smooth gradients).
+  Opt in with `--dtype fp16` when speed matters more than fidelity;
+  stick with `fp32` for production renders.
+- **`torch.compile`.** MPS support is improving but still produces
+  correctness regressions on some arches. Not enabled by default.
 
 ### CUDA
 
