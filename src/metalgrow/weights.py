@@ -58,9 +58,14 @@ def _sha256_of(path: Path, chunk: int = 1 << 20) -> str:
 def _download(url: str, dst: Path) -> None:
     """Stream ``url`` to ``dst`` atomically, printing coarse progress to stderr."""
     tmp = dst.with_suffix(dst.suffix + ".part")
+    # `\r` is only meaningful on a TTY. Under captured / piped stderr (CI logs,
+    # Typer's CliRunner, `| cat`) every update would concatenate onto one line,
+    # so we fall back to periodic line-per-decile output there.
+    tty = sys.stderr.isatty()
     with urlopen(url) as resp:  # noqa: S310 — URLs come from a checksum-verified registry
         total = int(resp.headers.get("Content-Length", 0) or 0)
         read = 0
+        last_decile = -1
         with tmp.open("wb") as out:
             while True:
                 chunk = resp.read(1 << 20)
@@ -68,10 +73,17 @@ def _download(url: str, dst: Path) -> None:
                     break
                 out.write(chunk)
                 read += len(chunk)
-                if total:
-                    pct = read * 100 // total
+                if not total:
+                    continue
+                pct = read * 100 // total
+                if tty:
                     print(f"\rdownloading {dst.name}: {pct}%", end="", file=sys.stderr)
-        if total:
+                else:
+                    decile = pct // 10
+                    if decile != last_decile:
+                        print(f"downloading {dst.name}: {decile * 10}%", file=sys.stderr)
+                        last_decile = decile
+        if total and tty:
             print("", file=sys.stderr)
     shutil.move(tmp, dst)
 
