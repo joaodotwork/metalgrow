@@ -37,10 +37,10 @@ jobs:
           uv pip install -e ".[dev]"
 
       - name: Ruff check
-        run: uv run ruff check .
+        run: .venv/bin/ruff check .
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: .venv/bin/ruff format --check .
 
       - name: Pytest
-        run: uv run pytest -q
+        run: .venv/bin/pytest -q
