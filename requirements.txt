@@ -1,0 +1,8 @@
+# Runtime dependencies — mirrors [project.dependencies] in pyproject.toml.
+# For development use `pip install -r requirements-dev.txt` (includes these).
+# Authoritative source is pyproject.toml; keep in sync.
+torch>=2.3
+torchvision>=0.18
+pillow>=10.0
+numpy>=1.26
+typer>=0.12

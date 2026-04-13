@@ -24,5 +24,18 @@ def test_cli_upscale_smoke(tmp_path):
         ["upscale", str(src), str(dst), "--scale", "2", "--device", "cpu"],
     )
     assert result.exit_code == 0, result.stdout
+    assert "backbone: bicubic" in result.stdout
     assert dst.exists()
     assert Image.open(dst).size == (32, 24)
+
+
+def test_cli_upscale_unknown_backbone(tmp_path):
+    src = tmp_path / "in.png"
+    dst = tmp_path / "out.png"
+    Image.new("RGB", (8, 8)).save(src)
+
+    result = runner.invoke(
+        app,
+        ["upscale", str(src), str(dst), "--device", "cpu", "--backbone", "nope"],
+    )
+    assert result.exit_code != 0
