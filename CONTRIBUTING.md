@@ -43,7 +43,7 @@ Linux CI runners without Apple Silicon.
 
 ## Branch and PR conventions
 
-- Branch from `master`. Name branches by intent: `feat/...`, `fix/...`,
+- Branch from `main`. Name branches by intent: `feat/...`, `fix/...`,
   `chore/...`, `docs/...`, `test/...`.
 - Keep commits focused. Prefer one commit per issue when a branch closes
   multiple issues; otherwise group related changes.
