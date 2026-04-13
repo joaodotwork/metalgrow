@@ -76,6 +76,28 @@ def _download(url: str, dst: Path) -> None:
     shutil.move(tmp, dst)
 
 
+def cached_path(backbone: str) -> Path:
+    """Return the on-disk cache path for ``backbone`` (may not exist)."""
+    try:
+        spec = REGISTRY[backbone]
+    except KeyError:
+        raise KeyError(f"no weights registered for backbone {backbone!r}") from None
+    return cache_dir() / spec.name
+
+
+def is_cached(backbone: str) -> bool:
+    return cached_path(backbone).exists()
+
+
+def remove_cached(backbone: str) -> bool:
+    """Delete the cached weight for ``backbone``; return True if a file was removed."""
+    path = cached_path(backbone)
+    if path.exists():
+        path.unlink()
+        return True
+    return False
+
+
 def ensure_weight(backbone: str) -> Path:
     """Return a local path to the verified weight file for ``backbone``.
 
