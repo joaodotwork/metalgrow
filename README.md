@@ -33,9 +33,11 @@ plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
 
 - 🍎 **Apple Metal first** — PyTorch MPS backend, zero config on Apple Silicon
 - 🔁 **Portable** — automatic fallback to CUDA / CPU when MPS isn't available
-- 🧩 **Pluggable backbone** — swap the upscaling core without touching the CLI
-- 🪶 **Tiny surface** — one `Upscaler` class, one CLI entrypoint
-- 🧪 **Tested** — pytest suite with a CPU-only baseline test
+- 🧩 **Pluggable backbones** — bicubic, Real-ESRGAN (x2/x4), SwinIR (x2/x4)
+- 🧱 **Tiled inference** — process arbitrarily large images with feathered overlap blending
+- 📂 **Batch mode** — upscale whole directories or globs with a progress bar
+- 📦 **Model registry** — `metalgrow models` manages cached weights with sha256 verification
+- 🧪 **Tested** — pytest suite covering the CPU baseline, tiling, batch mode, and registry
 
 ## Requirements
 
@@ -62,16 +64,45 @@ pip install -e .
 
 ### CLI
 
+Single file:
+
 ```bash
 metalgrow info
 metalgrow upscale input.jpg out.png --scale 2
-metalgrow upscale input.jpg out.png --scale 4 --device mps
+metalgrow upscale input.jpg out.png --scale 4 --device mps --backbone realesrgan-x4
 ```
 
-| Flag        | Default | Description                           |
-| ----------- | ------- | ------------------------------------- |
-| `--scale`   | `2.0`   | Upscale factor (1.01–8.0)             |
-| `--device`  | `auto`  | `auto` \| `mps` \| `cuda` \| `cpu`    |
+Whole directory or glob (writes to a target directory, mirroring filenames):
+
+```bash
+metalgrow upscale ./photos ./photos-upscaled --scale 2 --backbone realesrgan-x2
+metalgrow upscale "./photos/*.png" ./out --scale 2 --skip-existing
+```
+
+| Flag                  | Default       | Description                                                     |
+| --------------------- | ------------- | --------------------------------------------------------------- |
+| `--scale`, `-s`       | `2.0`         | Upscale factor (1.01–8.0)                                       |
+| `--device`, `-d`      | `auto`        | `auto` \| `mps` \| `cuda` \| `cpu`                              |
+| `--backbone`, `-b`    | `bicubic`     | `bicubic` \| `realesrgan-x{2,4}` \| `swinir-x{2,4}`             |
+| `--dtype`             | `fp32`        | `fp32` \| `fp16` (fp16 is MPS-only and noisier)                 |
+| `--tile`              | backbone hint | Tile size in input px for tiled inference (`0` disables)        |
+| `--tile-pad`          | backbone hint | Context padding per tile edge (covers backbone receptive field) |
+| `--skip-existing`     | off           | Batch mode: skip outputs that already exist                     |
+| `--workers`, `-j`     | `4`           | Batch mode: parallel I/O workers (inference stays serial)       |
+
+#### Manage cached model weights
+
+```bash
+metalgrow models list
+metalgrow models download realesrgan-x4
+metalgrow models rm realesrgan-x4
+```
+
+Weights cache to `~/.cache/metalgrow/` by default; override with the
+`METALGROW_CACHE_DIR` env var. Every download is sha256-verified.
+
+See [`docs/backbones.md`](./docs/backbones.md) for a quality / speed / memory
+comparison and guidance on which backbone to pick.
 
 ### Library
 
@@ -79,8 +110,13 @@ metalgrow upscale input.jpg out.png --scale 4 --device mps
 from PIL import Image
 from metalgrow import Upscaler
 
-upscaler = Upscaler(device="auto")  # auto | mps | cuda | cpu
-result = upscaler.upscale(Image.open("input.jpg").convert("RGB"), scale=2.0)
+upscaler = Upscaler(backbone="realesrgan-x2", device="auto")  # auto | mps | cuda | cpu
+result = upscaler.upscale(
+    Image.open("input.jpg").convert("RGB"),
+    scale=2.0,
+    tile=256,        # optional — backbone has sensible defaults
+    tile_pad=16,
+)
 result.save("out.png")
 ```
 
@@ -88,20 +124,28 @@ result.save("out.png")
 
 ```
 src/metalgrow/
-  device.py      # device auto-selection (MPS → CUDA → CPU)
-  upscaler.py    # Upscaler class — swap in a learned backbone here
-  cli.py         # typer CLI
+  device.py            # device auto-selection (MPS → CUDA → CPU)
+  upscaler.py          # Upscaler class + tiled inference with overlap blending
+  batch.py             # directory / glob batch mode
+  weights.py           # weight registry, sha256 verification, cache management
+  cli.py               # typer CLI (upscale, info, models)
+  backbones/           # bicubic, realesrgan, swinir; plugin registry
 tests/
+docs/
+  architecture.md      # module layout, data flow, extension points
+  backbones.md         # backbone comparison and tradeoffs
 ```
 
 ## Roadmap
 
-- [ ] Integrate a learned SR backbone (Real-ESRGAN default)
-- [ ] Tiled inference for large images
-- [ ] Batch / directory mode
-- [ ] Model registry + weight download
+- [x] Integrate a learned SR backbone (Real-ESRGAN default)
+- [x] Tiled inference for large images
+- [x] Batch / directory mode
+- [x] Model registry + weight download
+- [x] Second backbone family (SwinIR)
+- [x] GitHub Actions CI (lint + test on macOS + Linux)
 - [ ] Benchmarks: MPS vs CPU vs CUDA
-- [ ] GitHub Actions CI (lint + test on macOS + Linux)
+- [ ] v0.1.0 release
 
 ## Contributing
 
