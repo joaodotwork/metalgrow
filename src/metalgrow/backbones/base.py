@@ -19,6 +19,9 @@ class Backbone(ABC):
     name: ClassVar[str]
     # None means any scale > 1.0 is accepted (e.g. analytical resamplers).
     supported_scales: ClassVar[tuple[float, ...] | None] = None
+    # None means any channel count is supported. 3 means RGB-only — the
+    # Upscaler will handle alpha separately for such backbones.
+    input_channels: ClassVar[int | None] = None
 
     def __init__(self, device: torch.device, dtype: torch.dtype = torch.float32):
         self.device = device

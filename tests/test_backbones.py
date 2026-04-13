@@ -45,12 +45,6 @@ def test_realesrgan_scale_enforcement():
         bb.upscale(torch.zeros(1, 3, 4, 4), scale=3.0)
 
 
-def test_realesrgan_upscale_not_implemented_yet():
-    bb = get_backbone("realesrgan-x2", torch.device("cpu"), torch.float32)
-    with pytest.raises(NotImplementedError, match="issue #6"):
-        bb.upscale(torch.zeros(1, 3, 4, 4), scale=2.0)
-
-
 def test_backbone_is_abstract():
     with pytest.raises(TypeError):
         Backbone(torch.device("cpu"))  # type: ignore[abstract]
