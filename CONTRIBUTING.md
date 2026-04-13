@@ -71,6 +71,14 @@ for the expected shape of that change — briefly:
 Weights must not be committed; a model registry is planned (see the M3
 milestone).
 
+## Cutting a release
+
+Releases are fully automated: tag `vX.Y.Z` on `main`, push, and the
+`release.yml` workflow builds, publishes to PyPI (trusted publishing), and
+attaches the artifacts to a GitHub Release. See
+[`docs/releasing.md`](docs/releasing.md) for the full process — including
+the one-time PyPI publisher setup required before the first release.
+
 ## Reporting issues
 
 Bugs, questions, and feature requests are all welcome on the
