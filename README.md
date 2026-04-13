@@ -101,8 +101,9 @@ metalgrow models rm realesrgan-x4
 Weights cache to `~/.cache/metalgrow/` by default; override with the
 `METALGROW_CACHE_DIR` env var. Every download is sha256-verified.
 
-See [`docs/backbones.md`](./docs/backbones.md) for a quality / speed / memory
-comparison and guidance on which backbone to pick.
+See [`docs/models.md`](./docs/models.md) for a quality / speed / memory
+comparison (with benchmark numbers) and guidance on which backbone to pick,
+or [`docs/usage.md`](./docs/usage.md) for the full CLI / library reference.
 
 ### Library
 
@@ -132,8 +133,10 @@ src/metalgrow/
   backbones/           # bicubic, realesrgan, swinir; plugin registry
 tests/
 docs/
+  usage.md             # CLI recipes, library API, env vars, pitfalls
+  models.md            # backbone comparison, benchmark snapshot, tiling
+  benchmarks.md        # full (device × backbone × scale) tables
   architecture.md      # module layout, data flow, extension points
-  backbones.md         # backbone comparison and tradeoffs
 ```
 
 ## Roadmap
@@ -144,7 +147,7 @@ docs/
 - [x] Model registry + weight download
 - [x] Second backbone family (SwinIR)
 - [x] GitHub Actions CI (lint + test on macOS + Linux)
-- [ ] Benchmarks: MPS vs CPU vs CUDA
+- [x] Benchmarks: MPS vs CPU (CUDA pending GPU runner)
 - [ ] v0.1.0 release
 
 ## Contributing

@@ -13,3 +13,4 @@ build/
 *.safetensors
 models/
 out/
+.claude

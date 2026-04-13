@@ -1,6 +1,6 @@
 [project]
 name = "metalgrow"
-version = "0.0.1"
+version = "0.1.0"
 description = "AI-powered image upscaler accelerated on Apple Metal (MPS)."
 requires-python = ">=3.11"
 dependencies = [
@@ -60,3 +60,5 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+# ``benchmarks`` is not an installed package; expose it to the smoke tests.
+pythonpath = ["."]
