@@ -99,13 +99,24 @@ def _reset_peak(device: torch.device) -> int:
     return 0
 
 
-def _read_peak(device: torch.device, baseline: int) -> float | None:
+def _sample_peak(device: torch.device, baseline: int, running_max: int) -> int:
+    """Update ``running_max`` with the current allocation on MPS; no-op elsewhere.
+
+    MPS has no ``max_memory_allocated`` counter (unlike CUDA), so we sample
+    ``driver_allocated_memory`` at the end of each measured iteration and
+    keep the high-water mark across the loop.
+    """
+    if device.type == "mps":
+        now = int(torch.mps.driver_allocated_memory())
+        return max(running_max, now - baseline)
+    return running_max
+
+
+def _read_peak(device: torch.device, mps_running_max: int) -> float | None:
     if device.type == "cuda":
         return torch.cuda.max_memory_allocated() / (1024 * 1024)
     if device.type == "mps":
-        now = int(torch.mps.driver_allocated_memory())
-        delta = max(0, now - baseline)
-        return delta / (1024 * 1024)
+        return max(0, mps_running_max) / (1024 * 1024)
     return None
 
 
@@ -168,6 +179,10 @@ def bench_one(
             note="skipped (weights not cached)",
         )
 
+    # Baseline the device allocator BEFORE loading the model so "peak" covers
+    # weights + activations — the number users actually need for VRAM planning.
+    baseline = _reset_peak(device)
+
     upscaler = Upscaler(backbone=backbone, device=device_pref)
     img = _synth_image(size)
 
@@ -175,7 +190,7 @@ def bench_one(
         upscaler.upscale(img, scale=scale)
     _sync(device)
 
-    baseline = _reset_peak(device)
+    mps_running_max = _sample_peak(device, baseline, 0)
 
     times: list[float] = []
     last = None
@@ -185,8 +200,9 @@ def bench_one(
         last = upscaler.upscale(img, scale=scale)
         _sync(device)
         times.append(time.perf_counter() - t0)
+        mps_running_max = _sample_peak(device, baseline, mps_running_max)
 
-    peak = _read_peak(device, baseline)
+    peak = _read_peak(device, mps_running_max)
     assert last is not None
     out_w, out_h = last.size
     out_mp = out_w * out_h / 1e6

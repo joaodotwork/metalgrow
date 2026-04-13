@@ -28,8 +28,14 @@ not by which image was handy.
 - **MP/s** — output megapixels per second = `out_w * out_h / median_s`.
 - **Peak (MiB)** — device-side peak allocation during the measured run:
   - `cuda`: `torch.cuda.max_memory_allocated()` after `reset_peak_memory_stats()`
-  - `mps`: delta of `torch.mps.driver_allocated_memory()` around the run
-  - `cpu`: not reported (no reliable device-side counter; RSS deltas are noisy)
+  - `mps`: high-water of `torch.mps.driver_allocated_memory()` from before the
+    `Upscaler` is constructed, so the number covers weights + activations.
+    The MPS allocator pool does **not** shrink between cells inside one
+    process, so only the *first* cell per run reports a truthful peak —
+    later cells reuse the already-sized pool and can report 0. To get
+    per-backbone peaks, invoke the runner once per backbone (see
+    `docs/models.md` for the per-backbone numbers).
+  - `cpu`: not reported (no reliable device-side counter; RSS deltas are noisy).
 
 ## CUDA numbers
 
