@@ -33,6 +33,22 @@ REGISTRY: dict[str, WeightSpec] = {
         ),
         sha256="4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
     ),
+    "swinir-x2": WeightSpec(
+        name="001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth",
+        url=(
+            "https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/"
+            "001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth"
+        ),
+        sha256="ac6d4895f73aa1b3d563937e29dcedcfdff4d401280e248f23db3c6f68e8343b",
+    ),
+    "swinir-x4": WeightSpec(
+        name="001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth",
+        url=(
+            "https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/"
+            "001_classicalSR_DIV2K_s48w8_SwinIR-M_x4.pth"
+        ),
+        sha256="129dc773ba2d4c07f3eb0bb116fbe692011b7cc072d9ca12797cd3748198610a",
+    ),
 }
 
 
