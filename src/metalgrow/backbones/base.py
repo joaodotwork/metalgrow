@@ -22,6 +22,14 @@ class Backbone(ABC):
     # None means any channel count is supported. 3 means RGB-only — the
     # Upscaler will handle alpha separately for such backbones.
     input_channels: ClassVar[int | None] = None
+    # Default tile size for the shared Upscaler-level tiler. None disables
+    # tiling by default (analytical backbones have no VRAM ceiling); learned
+    # backbones should set a size that keeps a single tile's activations in
+    # VRAM on the target device.
+    default_tile: ClassVar[int | None] = None
+    # Pixels of input context padded around each tile. Needs to cover the
+    # backbone's receptive field so the blended seam is free of artefacts.
+    default_tile_pad: ClassVar[int] = 16
 
     def __init__(self, device: torch.device, dtype: torch.dtype = torch.float32):
         self.device = device

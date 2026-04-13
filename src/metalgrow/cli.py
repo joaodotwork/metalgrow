@@ -32,6 +32,12 @@ def upscale(
     dtype: str = typer.Option(
         "fp32", "--dtype", help="Inference dtype: fp32 | fp16 (fp16 MPS-only, noisier)"
     ),
+    tile: int | None = typer.Option(
+        None, "--tile", help="Tile size in input px (0 disables; omit = backbone default)"
+    ),
+    tile_pad: int | None = typer.Option(
+        None, "--tile-pad", help="Context padding per tile edge (omit = backbone default)"
+    ),
 ):
     if dtype not in _DTYPES:
         raise typer.BadParameter(f"dtype must be one of {list(_DTYPES)}")
@@ -39,7 +45,7 @@ def upscale(
     typer.echo(f"device: {upscaler.device}")
     typer.echo(f"backbone: {backbone}")
     typer.echo(f"dtype: {dtype}")
-    out = upscaler.upscale_file(src, dst, scale=scale)
+    out = upscaler.upscale_file(src, dst, scale=scale, tile=tile, tile_pad=tile_pad)
     typer.echo(f"wrote: {out}")
 
 
