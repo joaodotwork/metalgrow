@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import torch
 import torch.nn.functional as F
 from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor, to_pil_image

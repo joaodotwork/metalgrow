@@ -11,6 +11,13 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "pre-commit>=3.7",
+]
+
 [project.scripts]
 metalgrow = "metalgrow.cli:app"
 
@@ -24,3 +31,31 @@ packages = ["src/metalgrow"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+]
+
+[tool.ruff.lint.per-file-ignores]
+# typer relies on function-call defaults (typer.Argument/Option) by design.
+"src/metalgrow/cli.py" = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["metalgrow"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
