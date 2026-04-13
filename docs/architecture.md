@@ -192,8 +192,9 @@ contributors without Apple Silicon can work on the project.
   public API. They must not download weights.
 - **Integration tests** (future) will exercise the learned backbone on a
   tiny fixture image and assert output determinism given a fixed seed.
-- **Benchmarks** (future) live under `benchmarks/` and are run manually;
-  they are not part of CI.
+- **Benchmarks** live under `benchmarks/` and are run manually — see
+  [`benchmarks/README.md`](../benchmarks/README.md). They are not part of
+  CI. Snapshot results: [`docs/benchmarks.md`](./benchmarks.md).
 
 ## Non-goals
 
