@@ -23,7 +23,7 @@ class Upscaler:
             raise ValueError("scale must be > 1.0")
 
         tensor = pil_to_tensor(image).float().unsqueeze(0).to(self.device) / 255.0
-        _, _, h, w = tensor.shape
+        _, c, h, w = tensor.shape
         out = F.interpolate(
             tensor,
             size=(int(h * scale), int(w * scale)),
@@ -31,10 +31,13 @@ class Upscaler:
             align_corners=False,
         ).clamp(0.0, 1.0)
 
-        return to_pil_image(out.squeeze(0).cpu())
+        mode = {1: "L", 3: "RGB", 4: "RGBA"}.get(c)
+        return to_pil_image(out.squeeze(0).cpu(), mode=mode)
 
     def upscale_file(self, src: Path, dst: Path, scale: float = 2.0) -> Path:
-        image = Image.open(src).convert("RGB")
+        image = Image.open(src)
+        has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
+        image = image.convert("RGBA" if has_alpha else "RGB")
         result = self.upscale(image, scale=scale)
         dst.parent.mkdir(parents=True, exist_ok=True)
         result.save(dst)
