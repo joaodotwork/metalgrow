@@ -8,6 +8,7 @@ from torchvision.transforms.functional import pil_to_tensor, to_pil_image
 
 from metalgrow.backbones import get_backbone
 from metalgrow.device import get_device
+from metalgrow.metadata import capture, reapply
 
 
 class Upscaler:
@@ -36,6 +37,15 @@ class Upscaler:
         tile: int | None = None,
         tile_pad: int | None = None,
     ) -> Image.Image:
+        # Learned backbones only run at fixed native scales (e.g. 2x, 4x). To
+        # hit an arbitrary target factor we run the nearest supported native
+        # scale, then resample the result to the exact requested size with a
+        # high-quality Lanczos filter. Backbones that accept any scale (bicubic)
+        # run directly with no resample.
+        src_w, src_h = image.size
+        target = (round(src_w * scale), round(src_h * scale))
+        native = self._select_native_scale(scale)
+
         tensor = pil_to_tensor(image).to(self.device, self.dtype).unsqueeze(0) / 255.0
         _, c, _, _ = tensor.shape
 
@@ -43,16 +53,31 @@ class Upscaler:
             # Alpha is out-of-distribution for an RGB-trained SR model. Run
             # the backbone on the RGB plane and bicubic-upscale the alpha
             # channel, then recombine. Cheap and preserves transparency.
-            rgb = self._run_backbone(tensor[:, :3], scale, tile, tile_pad).clamp(0.0, 1.0)
+            rgb = self._run_backbone(tensor[:, :3], native, tile, tile_pad).clamp(0.0, 1.0)
             alpha = F.interpolate(
                 tensor[:, 3:4], size=rgb.shape[-2:], mode="bicubic", align_corners=False
             ).clamp(0.0, 1.0)
             out = torch.cat([rgb, alpha], dim=1)
         else:
-            out = self._run_backbone(tensor, scale, tile, tile_pad).clamp(0.0, 1.0)
+            out = self._run_backbone(tensor, native, tile, tile_pad).clamp(0.0, 1.0)
 
         mode = {1: "L", 3: "RGB", 4: "RGBA"}.get(out.shape[1])
-        return to_pil_image(out.squeeze(0).float().cpu(), mode=mode)
+        result = to_pil_image(out.squeeze(0).float().cpu(), mode=mode)
+        if result.size != target:
+            result = result.resize(target, Image.LANCZOS)
+        return result
+
+    def _select_native_scale(self, scale: float) -> float:
+        """The factor to actually run the backbone at before resampling.
+
+        Weights-bound backbones emit a fixed ``native_scale`` regardless of the
+        requested factor, so we run that (keeping the tiler's geometry honest)
+        and let :meth:`upscale` resample the result to the exact target.
+        Analytical backbones render any factor directly, so the request passes
+        through unchanged.
+        """
+        native = self.backbone.native_scale
+        return native if native is not None else scale
 
     def upscale_file(
         self,
@@ -61,13 +86,19 @@ class Upscaler:
         scale: float = 2.0,
         tile: int | None = None,
         tile_pad: int | None = None,
+        preserve_metadata: bool = False,
     ) -> Path:
         image = Image.open(src)
+        meta = capture(image) if preserve_metadata else None
         has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
         image = image.convert("RGBA" if has_alpha else "RGB")
         result = self.upscale(image, scale=scale, tile=tile, tile_pad=tile_pad)
         dst.parent.mkdir(parents=True, exist_ok=True)
-        result.save(dst)
+        if meta is not None:
+            result, save_kwargs = reapply(result, meta)
+            result.save(dst, **save_kwargs)
+        else:
+            result.save(dst)
         return dst
 
     def _run_backbone(
