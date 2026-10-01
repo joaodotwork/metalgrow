@@ -48,6 +48,10 @@ _HYSTERESIS = 0.3
 _MIN_SPREAD = math.radians(30)
 # ... whose periods agree to within this fraction (square dot lattice).
 _SAME_PERIOD = 0.05
+# Neighbours of a screened window seed at ``threshold * _NEIGHBOR`` ...
+_NEIGHBOR = 0.75
+# ... for at most this many rings of windows (≈ _MAX_GROWTH * hop px).
+_MAX_GROWTH = 8
 # Windows processed per FFT batch (bounds peak memory on full newspaper pages).
 _CHUNK = 64
 
@@ -149,25 +153,51 @@ def descreen_tensor(
     # [C, ny*nx, win, win] windowed tiles.
     tiles = padded.unfold(1, win, hop).unfold(2, win, hop).reshape(c, ny * nx, win, win)
     tiles = tiles * window2d
-    out_tiles = tiles  # filtered in place, chunk by chunk, after its FFT is taken
 
-    peaks: list[Peak] = []
-    screened = 0
-    for start in range(0, ny * nx, _CHUNK):
+    n = ny * nx
+
+    # Pass 1: score every window on luminance; seed confirmed screens.
+    prom = torch.empty(n, win, win)
+    for start in range(0, n, _CHUNK):
         sl = slice(start, start + _CHUNK)
-        spec = torch.fft.fft2(tiles[:, sl])  # [C, n, win, win]
-        prom = _prominence(spec.mean(dim=0))  # luminance-ish: mean of channel spectra
-        region = _notch_region(prom, allowed, threshold)
-        hit = region.flatten(1).any(dim=1)
-        if not hit.any():
-            continue
-        screened += int(hit.sum())
-        for k in hit.nonzero().flatten().tolist():
-            peaks.append(_strongest(prom[k], region[k], freqs))
-        atten = 1.0 - strength * _soften(region[hit], allowed)
-        filtered = torch.fft.ifft2(spec[:, hit] * atten).real
-        idx = hit.nonzero().flatten() + start
-        out_tiles[:, idx] = filtered
+        prom[sl] = _prominence(torch.fft.fft2(tiles[:, sl]).mean(dim=0))
+    region, bases, hit = _notch_region(prom, allowed, threshold)
+
+    # Pass 2: grow into neighbouring windows. Dark or busy windows of a
+    # confirmed photo often fall under the seed threshold, or have some other
+    # structure as their strongest peak, which leaves the photo patchy. A
+    # neighbour is accepted when the spectrum is prominent at *both*
+    # predicted fundamentals of a screen already confirmed on this page —
+    # two exact off-axis points that text and linework don't hit.
+    for _ in range(_MAX_GROWTH):
+        known = _unique_bases(bases[hit], win)
+        if known.numel() == 0:
+            break
+        grid = hit.view(1, ny, nx)
+        frontier = (_dilate(grid, 3, circular=False) & ~grid).flatten()
+        if not frontier.any():
+            break
+        idx = frontier.nonzero().flatten()
+        cand, cand_basis, ok = _notch_region(
+            prom[idx], allowed, threshold * _NEIGHBOR, known_bases=known
+        )
+        if not ok.any():
+            break
+        region[idx[ok]] = cand[ok]
+        bases[idx[ok]] = cand_basis[ok]
+        hit[idx[ok]] = True
+
+    screened = int(hit.sum())
+    peaks = [_strongest(prom[k], region[k], freqs) for k in hit.nonzero().flatten().tolist()]
+
+    # Pass 3: notch the screened windows, all channels.
+    if screened and strength > 0.0:
+        hit_idx = hit.nonzero().flatten()
+        for start in range(0, len(hit_idx), _CHUNK):
+            idx = hit_idx[start : start + _CHUNK]
+            atten = 1.0 - strength * _soften(region[idx], allowed)
+            tiles[:, idx] = torch.fft.ifft2(torch.fft.fft2(tiles[:, idx]) * atten).real
+    out_tiles = tiles
 
     report = DescreenReport(
         peaks=tuple(sorted(peaks, key=lambda p: -p.prominence)),
@@ -207,10 +237,26 @@ def _prominence(spec: torch.Tensor) -> torch.Tensor:
     return torch.fft.ifftshift(prom, dim=(-2, -1))
 
 
-def _notch_region(prom: torch.Tensor, allowed: torch.Tensor, threshold: float) -> torch.Tensor:
-    seed = (prom > threshold) & allowed
-    seed &= _is_lattice(seed, prom).view(-1, 1, 1)
+def _notch_region(
+    prom: torch.Tensor,
+    allowed: torch.Tensor,
+    threshold: float,
+    known_bases: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Per-window notch regions, lattice bases and screened flags.
+
+    Without ``known_bases`` a window must show a lattice on its own (see
+    :func:`_is_lattice`). With them (neighbour growth) it is enough that the
+    spectrum is prominent at both fundamentals of one of the known screens.
+    """
+    if known_bases is None:
+        seed = (prom > threshold) & allowed
+        ok, basis = _is_lattice(seed, prom)
+        seed &= ok.view(-1, 1, 1)
+    else:
+        ok, basis, seed = _predicted_lattice(prom, allowed, threshold, known_bases)
     weak = (prom > threshold * _HYSTERESIS) & allowed
+    seed |= _harmonic_seeds(basis, ok, weak, allowed)
     region = seed
     for _ in range(32):
         grown = _dilate(region, 3) & weak | region
@@ -220,10 +266,85 @@ def _notch_region(prom: torch.Tensor, allowed: torch.Tensor, threshold: float) -
     # A real image has a conjugate-symmetric spectrum; keep the notch
     # symmetric so the filtered window stays real-valued.
     mirrored = torch.roll(region.flip(-2, -1), shifts=(1, 1), dims=(-2, -1))
-    return region | mirrored
+    return region | mirrored, basis, ok
 
 
-def _is_lattice(seed: torch.Tensor, prom: torch.Tensor) -> torch.Tensor:
+def _bin_patch(fy: float, fx: float, h: int, w: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """Row/col index tensors of the 3×3 bin patch around frequency (fy, fx)."""
+    i, j = round(fy * h) % h, round(fx * w) % w
+    ys = torch.tensor([(i + d) % h for d in (-1, 0, 1)]).view(-1, 1)
+    xs = torch.tensor([(j + d) % w for d in (-1, 0, 1)]).view(1, -1)
+    return ys, xs
+
+
+def _predicted_lattice(
+    prom: torch.Tensor, allowed: torch.Tensor, threshold: float, known_bases: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    n, h, w = prom.shape
+    ok = torch.zeros(n, dtype=torch.bool)
+    basis = torch.zeros(n, 2, 2)
+    seed = torch.zeros(n, h, w, dtype=torch.bool)
+    for b in known_bases:
+        patches = [_bin_patch(fy, fx, h, w) for fy, fx in b.tolist()]
+        level = (
+            torch.stack([prom[:, ys, xs].flatten(1).max(dim=1).values for ys, xs in patches])
+            .min(dim=0)
+            .values
+        )
+        new = (level > threshold) & ~ok
+        if not new.any():
+            continue
+        ok |= new
+        basis[new] = b
+        for ys, xs in patches:
+            seed[new.nonzero().flatten().view(-1, 1, 1), ys, xs] = allowed[ys, xs]
+    return ok, basis, seed
+
+
+def _unique_bases(bases: torch.Tensor, win: int) -> torch.Tensor:
+    """Deduplicate lattice bases that land on the same spectral bins."""
+    if bases.numel() == 0:
+        return bases
+    keys = (bases * win).round().flatten(1)
+    _, first = torch.unique(keys, dim=0, return_inverse=True)
+    picked = torch.zeros(int(first.max()) + 1, dtype=torch.long)
+    picked[first] = torch.arange(len(first))
+    return bases[picked]
+
+
+def _harmonic_seeds(
+    basis: torch.Tensor, ok: torch.Tensor, weak: torch.Tensor, allowed: torch.Tensor
+) -> torch.Tensor:
+    """Seed the confirmed lattice's harmonics ``k*v1 + l*v2`` (|k|, |l| <= 2).
+
+    Harmonics are weaker than the fundamentals and not spectrally connected
+    to them, so hysteresis alone misses them; but once the lattice is known
+    their positions are too. On dark, high-coverage dots the 2nd-order
+    harmonics (on the axes for a 45° screen) carry much of the visible
+    texture. Second-order positions (``|k| + |l| <= 2``) are notched
+    outright — a 3×3-bin notch in a window already confirmed as a photo
+    costs nothing visible; higher orders only where at least weakly
+    prominent.
+    """
+    n, h, w = weak.shape
+    out = torch.zeros_like(weak)
+    for k in ok.nonzero().flatten().tolist():
+        (y1, x1), (y2, x2) = basis[k].tolist()
+        for a in range(-2, 3):
+            for b in range(-2, 3):
+                if (a, b) == (0, 0):
+                    continue
+                i = round((a * y1 + b * y2) * h) % h
+                j = round((a * x1 + b * x2) * w) % w
+                ys = [(i + d) % h for d in (-1, 0, 1)]
+                xs = [(j + d) % w for d in (-1, 0, 1)]
+                src = allowed if abs(a) + abs(b) <= 2 else weak[k]
+                patch = src[ys][:, xs]
+                out[k][torch.tensor(ys).view(-1, 1), torch.tensor(xs).view(1, -1)] |= patch
+    return out
+
+
+def _is_lattice(seed: torch.Tensor, prom: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Per window: do the seed peaks look like a halftone dot lattice?
 
     A halftone screen is a 2-D, (near-)square dot lattice: its fundamentals
@@ -232,6 +353,9 @@ def _is_lattice(seed: torch.Tensor, prom: torch.Tensor) -> torch.Tensor:
     (line pitch vertically, stroke rhythm horizontally), but at unrelated
     periods, and a block of lines alone is 1-D. Requiring a pair of seeds
     that differ in direction yet match in radius rejects both.
+
+    Returns ``(is_lattice, basis)`` per window; ``basis`` holds the two
+    fundamentals ``((fy1, fx1), (fy2, fx2))`` in cycles/px.
     """
     n, h, w = seed.shape
     fy = torch.fft.fftfreq(h).view(-1, 1).expand(h, w)
@@ -239,9 +363,11 @@ def _is_lattice(seed: torch.Tensor, prom: torch.Tensor) -> torch.Tensor:
     radius = torch.hypot(fy, fx)
     theta = torch.atan2(fy, fx) % math.pi  # a direction and its opposite coincide
     out = torch.zeros(n, dtype=torch.bool)
+    basis = torch.zeros(n, 2, 2)
     for k in seed.flatten(1).any(dim=1).nonzero().flatten().tolist():
         m = seed[k]
         p, r, t = prom[k][m], radius[m], theta[m]
+        vy, vx = fy[m], fx[m]
         # Anchor on the strongest seed: in a real screen that's a
         # fundamental, so its partner must match *it*. Matching any pair
         # would let one of text's many line-pitch harmonics line up by luck.
@@ -249,22 +375,31 @@ def _is_lattice(seed: torch.Tensor, prom: torch.Tensor) -> torch.Tensor:
         dt = (t - t[a]).abs()
         dt = torch.minimum(dt, math.pi - dt)
         dr = (r - r[a]).abs() / r[a]
-        out[k] = bool(((dt >= _MIN_SPREAD) & (dr <= _SAME_PERIOD)).any())
-    return out
+        partner = (dt >= _MIN_SPREAD) & (dr <= _SAME_PERIOD)
+        out[k] = bool(partner.any())
+        if out[k]:
+            b = int(torch.where(partner, p, torch.full((), -torch.inf)).argmax())
+            basis[k] = torch.tensor([[vy[a], vx[a]], [vy[b], vx[b]]])
+    return out, basis
 
 
-def _dilate(m: torch.Tensor, k: int) -> torch.Tensor:
-    """Binary dilation with wrap-around (the spectrum is periodic)."""
+def _dilate(m: torch.Tensor, k: int, circular: bool = True) -> torch.Tensor:
+    """Binary dilation; wraps around by default (the spectrum is periodic)."""
     p = k // 2
-    x = F.pad(m.float()[:, None], (p, p, p, p), mode="circular")
+    x = F.pad(m.float()[:, None], (p, p, p, p), mode="circular" if circular else "constant")
     return F.max_pool2d(x, k, stride=1)[:, 0] > 0
 
 
 def _soften(region: torch.Tensor, allowed: torch.Tensor) -> torch.Tensor:
-    """Region → soft ``[0, 1]`` notch with a 1-bin margin and a feathered edge."""
-    soft = _dilate(region, 3).float()
+    """Region → soft ``[0, 1]`` notch with a 2-bin margin and a feathered edge.
+
+    The margin covers the ±5 % frequency wander that paper warp puts on a
+    screen; inside a confirmed halftone window nothing real lives that close
+    to the screen frequency, since the screen itself is the resolution limit.
+    """
+    soft = _dilate(region, 5).float()
     soft = torch.fft.fftshift(soft, dim=(-2, -1))
-    soft = gaussian_blur(soft, kernel_size=[5, 5], sigma=[1.0, 1.0])
+    soft = gaussian_blur(soft, kernel_size=[7, 7], sigma=[1.5, 1.5])
     soft = torch.fft.ifftshift(soft, dim=(-2, -1))
     return torch.where(allowed, soft.clamp(0.0, 1.0), torch.zeros(()))
 

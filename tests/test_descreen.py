@@ -181,3 +181,59 @@ def test_cli_upscale_with_descreen(tmp_path):
     assert result.exit_code == 0, result.output
     assert "descreen: screen" in result.output
     assert Image.open(dst).size == (512, 512)
+
+
+def test_confirmed_lattice_notches_second_order_harmonics():
+    # Dark, high-coverage dots put much of their energy into the 2nd-order
+    # harmonics (v1 ± v2: on the axes for a 45° screen), which can be too
+    # weak to seed or grow into. Once a window's lattice is confirmed their
+    # positions are known, so they're notched outright — but only there.
+    import torch
+
+    from metalgrow.descreen import _harmonic_seeds
+
+    win = 256
+    f = torch.fft.fftfreq(win)
+    allowed = torch.hypot(f.view(-1, 1), f.view(1, -1)) >= 0.08
+    v1, v2 = (1 / 6, 1 / 6), (1 / 6, -1 / 6)
+    basis = torch.tensor([[v1, v2], [v1, v2]])
+    ok = torch.tensor([True, False])
+    weak = torch.zeros(2, win, win, dtype=torch.bool)  # nothing prominent at all
+
+    seeds = _harmonic_seeds(basis, ok, weak, allowed)
+    on_axis = round((v1[0] + v2[0]) * win) % win  # v1 + v2 = (1/3, 0)
+    assert seeds[0, on_axis, 0]
+    assert not seeds[1].any()  # unconfirmed window: untouched
+
+
+def test_growth_accepts_only_the_known_screen():
+    # Neighbour growth: a window is accepted at the lower threshold when it is
+    # prominent at *both* predicted fundamentals of a confirmed screen, and
+    # rejected when its peaks sit elsewhere (e.g. text's axis harmonics).
+    import torch
+
+    from metalgrow.descreen import _notch_region
+
+    win = 256
+    f = torch.fft.fftfreq(win)
+    allowed = torch.hypot(f.view(-1, 1), f.view(1, -1)) >= 0.08
+    v1, v2 = (1 / 6, 1 / 6), (1 / 6, -1 / 6)  # 45° screen, 3 px period
+    known = torch.tensor([[v1, v2]])
+
+    def bump(prom, fy, fx, value):
+        for sy, sx in ((fy, fx), (-fy, -fx)):
+            prom[round(sy * win) % win, round(sx * win) % win] = value
+
+    screen = torch.zeros(win, win)
+    bump(screen, *v1, 1.3)  # between the growth (1.2) and seed (1.6) thresholds
+    bump(screen, *v2, 1.3)
+    text = torch.zeros(win, win)
+    bump(text, 0.1, 0.0, 1.3)  # line pitch on the vertical axis
+    bump(text, 0.0, 0.25, 1.3)  # stroke rhythm on the horizontal axis
+
+    prom = torch.stack([screen, text])
+    _, _, seeded = _notch_region(prom, allowed, 1.6)
+    assert not seeded.any()  # neither seeds on its own
+    region, _, ok = _notch_region(prom, allowed, 1.2, known_bases=known)
+    assert ok.tolist() == [True, False]
+    assert region[0].any() and not region[1].any()

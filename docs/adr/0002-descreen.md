@@ -55,10 +55,23 @@ is changed. Each window is judged on its own:
    screen looks like. Text either has all its peaks on one axis, or on two
    axes at unrelated periods, so it fails the check.
 3. **Notch:** seeds grow by hysteresis into connected, moderately prominent
-   bins, which picks up smeared fundamentals and harmonics. The region is
-   made conjugate-symmetric and feathered by about 1 bin. Frequencies below
-   0.08 cycles/px are never touched.
-4. Windows with no valid lattice are passed through unchanged.
+   bins, which picks up fundamentals smeared by paper warp. Once a window's
+   lattice is confirmed, its 2nd-order harmonics (v₁ ± v₂, 2v₁, 2v₂) are
+   notched at their predicted positions. On dark dots these carry much of
+   the visible texture but are too weak to seed on their own. The region is
+   made conjugate-symmetric and feathered with a 2-bin margin, which covers
+   the ±5 % frequency wander of a warped screen. Frequencies below 0.08
+   cycles/px are never touched.
+4. **Neighbour growth:** dark or busy windows of a confirmed photo often fall
+   under the seed threshold, or have other structure as their strongest
+   peak, which leaves the photo patchy. A neighbouring window is accepted at
+   0.75× the threshold if its spectrum is prominent at *both* predicted
+   fundamentals of a screen already confirmed on the page. Those are two
+   exact off-axis points, and text doesn't hit them. (An earlier version
+   accepted any neighbour that passed its own lattice check at the lower
+   threshold. Text beside photos then got through on chance pairings, and
+   body type came out visibly thinned.)
+5. Windows with no valid lattice are passed through unchanged.
 
 ## Decision
 
@@ -73,9 +86,10 @@ device-specific branches" invariant.
 
 ## Consequences
 
-- On the four motivating pages, only the photos change. Text, rules and
-  blank paper come back unchanged, and the photos lose 7–30× of their
-  screen energy.
+- On the four motivating pages, only the photos change (7–21 % of the page
+  area). Text, rules and blank paper come back unchanged, including text
+  right next to photos. The photos come out with continuous tone, and paper
+  grain and edges are preserved.
 - Line screens (a 1-D halftone) are deliberately not handled, because the
   lattice check rejects them. They are rare in newspaper print.
 - Very small or very light photos whose screen sits near the threshold may
