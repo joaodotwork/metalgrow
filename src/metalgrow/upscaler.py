@@ -7,6 +7,7 @@ from PIL import Image
 from torchvision.transforms.functional import pil_to_tensor, to_pil_image
 
 from metalgrow.backbones import get_backbone
+from metalgrow.descreen import DescreenReport, descreen
 from metalgrow.device import get_device
 from metalgrow.metadata import capture, reapply
 
@@ -25,10 +26,16 @@ class Upscaler:
         backbone: str = "bicubic",
         device: str = "auto",
         dtype: torch.dtype = torch.float32,
+        descreen: bool = False,
+        descreen_strength: float = 1.0,
     ):
         self.device = get_device(device)
         self.dtype = dtype
         self.backbone = get_backbone(backbone, self.device, dtype)
+        self.descreen = descreen
+        self.descreen_strength = descreen_strength
+        # Report from the most recent ``upscale`` call (None when descreen is off).
+        self.last_descreen: DescreenReport | None = None
 
     def upscale(
         self,
@@ -45,6 +52,12 @@ class Upscaler:
         src_w, src_h = image.size
         target = (round(src_w * scale), round(src_h * scale))
         native = self._select_native_scale(scale)
+
+        # Halftone screens must go before the backbone, which would otherwise
+        # sharpen the dot lattice into moiré.
+        self.last_descreen = None
+        if self.descreen:
+            image, self.last_descreen = descreen(image, self.descreen_strength)
 
         tensor = pil_to_tensor(image).to(self.device, self.dtype).unsqueeze(0) / 255.0
         _, c, _, _ = tensor.shape

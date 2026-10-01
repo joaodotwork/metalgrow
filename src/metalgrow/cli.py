@@ -2,9 +2,12 @@ from pathlib import Path
 
 import torch
 import typer
+from PIL import Image
 
 from metalgrow.backbones import list_backbones
 from metalgrow.batch import discover_inputs, plan_outputs, run_batch
+from metalgrow.descreen import descreen as descreen_image
+from metalgrow.metadata import capture, reapply
 from metalgrow.upscaler import Upscaler
 from metalgrow.weights import (
     REGISTRY,
@@ -51,6 +54,14 @@ def upscale(
     workers: int = typer.Option(
         4, "--workers", "-j", min=1, help="Parallel I/O workers (inference stays serial)"
     ),
+    descreen: bool = typer.Option(
+        False,
+        "--descreen",
+        help="Remove halftone screens (moiré) from scanned print before upscaling",
+    ),
+    descreen_strength: float = typer.Option(
+        1.0, "--descreen-strength", min=0.0, max=1.0, help="Notch depth, 0..1"
+    ),
 ):
     if dtype not in _DTYPES:
         raise typer.BadParameter(f"dtype must be one of {list(_DTYPES)}")
@@ -61,10 +72,18 @@ def upscale(
     if not inputs:
         raise typer.BadParameter(f"no images found at {src!r}")
 
-    upscaler = Upscaler(backbone=backbone, device=device, dtype=_DTYPES[dtype])
+    upscaler = Upscaler(
+        backbone=backbone,
+        device=device,
+        dtype=_DTYPES[dtype],
+        descreen=descreen,
+        descreen_strength=descreen_strength,
+    )
     typer.echo(f"device: {upscaler.device}")
     typer.echo(f"backbone: {backbone}")
     typer.echo(f"dtype: {dtype}")
+    if descreen:
+        typer.echo(f"descreen: strength {descreen_strength}")
 
     batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
 
@@ -77,6 +96,8 @@ def upscale(
             tile_pad=tile_pad,
             preserve_metadata=preserve_metadata,
         )
+        if upscaler.last_descreen is not None:
+            typer.echo(f"descreen: {upscaler.last_descreen.describe(_dpi(inputs[0]))}")
         typer.echo(f"wrote: {out}")
         return
 
@@ -99,6 +120,52 @@ def upscale(
         f"done: {result.processed} processed, {result.skipped} skipped, "
         f"{result.failed} failed (of {result.total})"
     )
+
+
+@app.command("descreen")
+def descreen_cmd(
+    src: str = typer.Argument(..., help="Image file, directory, or glob"),
+    dst: Path = typer.Argument(..., help="Output file (single src) or directory (batch)"),
+    strength: float = typer.Option(1.0, "--strength", min=0.0, max=1.0, help="Notch depth, 0..1"),
+    preserve_metadata: bool = typer.Option(
+        False, "--preserve-metadata", "-p", help="Keep grayscale mode, ICC profile, and DPI"
+    ),
+):
+    """Remove halftone screens (moiré) without resizing."""
+    try:
+        inputs = discover_inputs(src)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(f"source not found: {exc}") from None
+    if not inputs:
+        raise typer.BadParameter(f"no images found at {src!r}")
+
+    batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
+    if batch_mode:
+        if dst.exists() and not dst.is_dir():
+            raise typer.BadParameter(f"batch destination must be a directory: {dst}")
+        items = plan_outputs(inputs, dst)
+    else:
+        items = [(inputs[0], dst)]
+
+    for in_path, out_path in items:
+        image = Image.open(in_path)
+        meta = capture(image) if preserve_metadata else None
+        has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
+        working = image.convert("RGBA" if has_alpha else "RGB")
+        result, report = descreen_image(working, strength)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if meta is not None:
+            result, save_kwargs = reapply(result, meta)
+            result.save(out_path, **save_kwargs)
+        else:
+            result.save(out_path)
+        typer.echo(f"{in_path.name}: {report.describe(_dpi(in_path))} -> {out_path}")
+
+
+def _dpi(path: Path) -> float | None:
+    with Image.open(path) as im:
+        dpi = im.info.get("dpi")
+    return float(dpi[0]) if dpi else None
 
 
 @app.command()
