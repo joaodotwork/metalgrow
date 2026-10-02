@@ -66,3 +66,13 @@ def test_cli_upscale_unknown_backbone(tmp_path):
         ["upscale", str(src), str(dst), "--device", "cpu", "--backbone", "nope"],
     )
     assert result.exit_code != 0
+
+
+def test_package_version_matches_pyproject():
+    import tomllib
+    from pathlib import Path
+
+    import metalgrow
+
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert metalgrow.__version__ == pyproject["project"]["version"]
