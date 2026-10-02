@@ -19,6 +19,11 @@ class Backbone(ABC):
     name: ClassVar[str]
     # None means any scale > 1.0 is accepted (e.g. analytical resamplers).
     supported_scales: ClassVar[tuple[float, ...] | None] = None
+    # The fixed output factor of a weights-bound backbone: a 4x model always
+    # emits 4x no matter what scale is requested. The Upscaler runs this factor
+    # and resamples to the exact target. None means the backbone renders any
+    # requested scale directly (analytical resamplers), so no resample is needed.
+    native_scale: ClassVar[float | None] = None
     # None means any channel count is supported. 3 means RGB-only — the
     # Upscaler will handle alpha separately for such backbones.
     input_channels: ClassVar[int | None] = None

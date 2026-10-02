@@ -25,6 +25,7 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
+from metalgrow.metadata import capture, reapply
 from metalgrow.upscaler import Upscaler
 
 IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"})
@@ -64,22 +65,28 @@ def plan_outputs(inputs: Iterable[Path], dst_dir: Path) -> list[tuple[Path, Path
     return [(src, dst_dir / src.name) for src in inputs]
 
 
-def _load(src: Path) -> tuple[Image.Image, str]:
+def _load(src: Path, preserve_metadata: bool = False) -> tuple[Image.Image, dict | None]:
     image = Image.open(src)
+    meta = capture(image) if preserve_metadata else None
     has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
     mode = "RGBA" if has_alpha else "RGB"
-    return image.convert(mode), mode
+    return image.convert(mode), meta
 
 
-def _save(image: Image.Image, dst: Path) -> None:
+def _save(image: Image.Image, dst: Path, meta: dict | None = None) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
-    image.save(dst)
+    if meta is not None:
+        image, save_kwargs = reapply(image, meta)
+        image.save(dst, **save_kwargs)
+    else:
+        image.save(dst)
 
 
 def _prefetch(
     executor: ThreadPoolExecutor,
     items: Iterable[tuple[Path, Path]],
     depth: int,
+    preserve_metadata: bool = False,
 ) -> Iterator[tuple[Path, Path, Future]]:
     """Stream items keeping at most ``depth`` reads in flight at once."""
     pending: deque[tuple[Path, Path, Future]] = deque()
@@ -90,7 +97,7 @@ def _prefetch(
             src, dst = next(iterator)
         except StopIteration:
             return False
-        pending.append((src, dst, executor.submit(_load, src)))
+        pending.append((src, dst, executor.submit(_load, src, preserve_metadata)))
         return True
 
     for _ in range(max(1, depth)):
@@ -112,6 +119,7 @@ def run_batch(
     tile_pad: int | None,
     workers: int = 4,
     skip_existing: bool = False,
+    preserve_metadata: bool = False,
     progress: bool = True,
 ) -> BatchResult:
     """Run ``upscaler`` over each (src, dst) pair, returning counts."""
@@ -132,9 +140,11 @@ def run_batch(
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         with Progress(*columns, disable=not progress) as bar:
             task = bar.add_task("upscaling", total=len(pending))
-            for src, dst, read_fut in _prefetch(pool, pending, depth=workers):
+            for src, dst, read_fut in _prefetch(
+                pool, pending, depth=workers, preserve_metadata=preserve_metadata
+            ):
                 try:
-                    image, _mode = read_fut.result()
+                    image, meta = read_fut.result()
                 except Exception as exc:  # noqa: BLE001 — surface but keep batch going
                     failed += 1
                     bar.console.log(f"[red]read failed[/red] {src}: {exc}")
@@ -147,7 +157,7 @@ def run_batch(
                     bar.console.log(f"[red]upscale failed[/red] {src}: {exc}")
                     bar.advance(task)
                     continue
-                write_futs.append(pool.submit(_save, out, dst))
+                write_futs.append(pool.submit(_save, out, dst, meta))
                 processed += 1
                 bar.advance(task)
 

@@ -54,11 +54,13 @@ def test_realesrgan_x4_preserves_alpha_via_bicubic_alpha_path():
 
 
 @requires_x4
-def test_realesrgan_rejects_unsupported_scale():
-    img = Image.new("RGB", (8, 8))
-    up = Upscaler(backbone="realesrgan-x4", device="cpu")
-    with pytest.raises(ValueError, match="supports scales"):
-        up.upscale(img, scale=3.0)
+def test_realesrgan_fractional_scale_resamples_to_target():
+    # The x4 model runs at native 4x, then the result is resampled to the
+    # requested 3x — an arbitrary target the backbone can't render directly.
+    img = Image.new("RGB", (8, 8), color=(40, 80, 160))
+    out = Upscaler(backbone="realesrgan-x4", device="cpu").upscale(img, scale=3.0)
+    assert out.size == (24, 24)
+    assert out.mode == "RGB"
 
 
 @requires_x4

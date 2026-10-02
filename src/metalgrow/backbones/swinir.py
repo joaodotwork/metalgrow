@@ -26,6 +26,8 @@ class SwinIRBackbone(Backbone):
         super().__init__(device, dtype)
         self._registry_key = registry_key
         self._model: torch.nn.Module | None = None
+        # Weights are fixed-scale; the trailing "-x{n}" encodes the factor.
+        self.native_scale = float(registry_key.rsplit("-x", 1)[-1])
 
     def _load(self) -> torch.nn.Module:
         if self._model is not None:

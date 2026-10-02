@@ -63,11 +63,12 @@ def test_swinir_x4_upscales_rgb_image():
 
 
 @requires_x2
-def test_swinir_rejects_unsupported_scale():
-    img = Image.new("RGB", (32, 32))
-    up = Upscaler(backbone="swinir-x2", device="cpu")
-    with pytest.raises(ValueError, match="supports scales"):
-        up.upscale(img, scale=3.0)
+def test_swinir_fractional_scale_resamples_to_target():
+    # The x2 model runs at native 2x, then the result is resampled up to the
+    # requested 3x target via Lanczos.
+    img = Image.new("RGB", (32, 32), color=(60, 90, 120))
+    out = Upscaler(backbone="swinir-x2", device="cpu").upscale(img, scale=3.0)
+    assert out.size == (96, 96)
 
 
 @requires_x4

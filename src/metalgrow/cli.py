@@ -42,6 +42,12 @@ def upscale(
     skip_existing: bool = typer.Option(
         False, "--skip-existing", help="Skip outputs that already exist (batch mode)"
     ),
+    preserve_metadata: bool = typer.Option(
+        False,
+        "--preserve-metadata",
+        "-p",
+        help="Keep grayscale mode, embedded ICC profile, and rescaled DPI tag",
+    ),
     workers: int = typer.Option(
         4, "--workers", "-j", min=1, help="Parallel I/O workers (inference stays serial)"
     ),
@@ -63,7 +69,14 @@ def upscale(
     batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
 
     if not batch_mode:
-        out = upscaler.upscale_file(inputs[0], dst, scale=scale, tile=tile, tile_pad=tile_pad)
+        out = upscaler.upscale_file(
+            inputs[0],
+            dst,
+            scale=scale,
+            tile=tile,
+            tile_pad=tile_pad,
+            preserve_metadata=preserve_metadata,
+        )
         typer.echo(f"wrote: {out}")
         return
 
@@ -80,6 +93,7 @@ def upscale(
         tile_pad=tile_pad,
         workers=workers,
         skip_existing=skip_existing,
+        preserve_metadata=preserve_metadata,
     )
     typer.echo(
         f"done: {result.processed} processed, {result.skipped} skipped, "

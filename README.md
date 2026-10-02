@@ -36,6 +36,7 @@ plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
 - 🧩 **Pluggable backbones** — bicubic, Real-ESRGAN (x2/x4), SwinIR (x2/x4)
 - 🧱 **Tiled inference** — process arbitrarily large images with feathered overlap blending
 - 📂 **Batch mode** — upscale whole directories or globs with a progress bar
+- 🖨️ **Print-aware** — `--preserve-metadata` keeps grayscale mode, the ICC profile, and a rescaled DPI tag intact
 - 📦 **Model registry** — `metalgrow models` manages cached weights with sha256 verification
 - 🧪 **Tested** — pytest suite covering the CPU baseline, tiling, batch mode, and registry
 
@@ -81,13 +82,14 @@ metalgrow upscale "./photos/*.png" ./out --scale 2 --skip-existing
 
 | Flag                  | Default       | Description                                                     |
 | --------------------- | ------------- | --------------------------------------------------------------- |
-| `--scale`, `-s`       | `2.0`         | Upscale factor (1.01–8.0)                                       |
+| `--scale`, `-s`       | `2.0`         | Upscale factor (1.01–8.0); learned backbones run their native factor then resample to this exact target |
 | `--device`, `-d`      | `auto`        | `auto` \| `mps` \| `cuda` \| `cpu`                              |
 | `--backbone`, `-b`    | `bicubic`     | `bicubic` \| `realesrgan-x{2,4}` \| `swinir-x{2,4}`             |
 | `--dtype`             | `fp32`        | `fp32` \| `fp16` (fp16 is MPS-only and noisier)                 |
 | `--tile`              | backbone hint | Tile size in input px for tiled inference (`0` disables)        |
 | `--tile-pad`          | backbone hint | Context padding per tile edge (covers backbone receptive field) |
 | `--skip-existing`     | off           | Batch mode: skip outputs that already exist                     |
+| `--preserve-metadata`, `-p` | off     | Keep grayscale mode, embedded ICC profile, and a rescaled DPI tag (for print / preflight workflows) |
 | `--workers`, `-j`     | `4`           | Batch mode: parallel I/O workers (inference stays serial)       |
 
 #### Manage cached model weights
