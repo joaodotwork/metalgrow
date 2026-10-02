@@ -37,6 +37,7 @@ plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
 - 🧱 **Tiled inference** — process arbitrarily large images with feathered overlap blending
 - 📂 **Batch mode** — upscale whole directories or globs with a progress bar
 - 🖨️ **Print-aware** — `--preserve-metadata` keeps grayscale mode, the ICC profile, and a rescaled DPI tag intact
+- 📰 **Descreen** — `--descreen` removes halftone screens (moiré) from scanned print before upscaling, leaving text and linework untouched
 - 📦 **Model registry** — `metalgrow models` manages cached weights with sha256 verification
 - 🧪 **Tested** — pytest suite covering the CPU baseline, tiling, batch mode, and registry
 
@@ -91,6 +92,24 @@ metalgrow upscale "./photos/*.png" ./out --scale 2 --skip-existing
 | `--skip-existing`     | off           | Batch mode: skip outputs that already exist                     |
 | `--preserve-metadata`, `-p` | off     | Keep grayscale mode, embedded ICC profile, and a rescaled DPI tag (for print / preflight workflows) |
 | `--workers`, `-j`     | `4`           | Batch mode: parallel I/O workers (inference stays serial)       |
+| `--descreen`          | off           | Remove halftone screens (moiré) from scanned print before the backbone runs |
+| `--descreen-strength` | `1.0`         | Notch depth, `0`–`1`                                            |
+
+#### Descreen scanned print
+
+Newspaper and magazine scans carry the printer's halftone dot screen, which
+SR backbones sharpen into moiré. `--descreen` removes it first. Detection is
+local and only touches regions that actually contain a dot lattice — type,
+rules and blank paper come back unchanged. See
+[ADR 0002](./docs/adr/0002-descreen.md) for how it works.
+
+```bash
+# descreen + upscale, keeping DPI / ICC / grayscale for print
+metalgrow upscale scan.tif out.tif --descreen -p --scale 1.5 -b swinir-x2
+
+# descreen only, no resize
+metalgrow descreen scan.tif clean.tif -p
+```
 
 #### Manage cached model weights
 
@@ -117,7 +136,7 @@ upscaler = Upscaler(backbone="realesrgan-x2", device="auto")  # auto | mps | cud
 result = upscaler.upscale(
     Image.open("input.jpg").convert("RGB"),
     scale=2.0,
-    tile=256,        # optional — backbone has sensible defaults
+    tile=256,  # optional — backbone has sensible defaults
     tile_pad=16,
 )
 result.save("out.png")
@@ -130,8 +149,10 @@ src/metalgrow/
   device.py            # device auto-selection (MPS → CUDA → CPU)
   upscaler.py          # Upscaler class + tiled inference with overlap blending
   batch.py             # directory / glob batch mode
+  descreen.py          # local FFT notch filter for halftone screens
+  metadata.py          # ICC / DPI / grayscale capture + reapply
   weights.py           # weight registry, sha256 verification, cache management
-  cli.py               # typer CLI (upscale, info, models)
+  cli.py               # typer CLI (upscale, descreen, info, models)
   backbones/           # bicubic, realesrgan, swinir; plugin registry
 tests/
 docs/
