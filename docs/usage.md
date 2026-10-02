@@ -82,7 +82,7 @@ upscaler = Upscaler(backbone="realesrgan-x2", device="auto")
 result = upscaler.upscale(
     Image.open("input.jpg").convert("RGB"),
     scale=2.0,
-    tile=256,        # optional; backbone ships with sensible defaults
+    tile=256,  # optional; backbone ships with sensible defaults
     tile_pad=16,
 )
 result.save("out.png")
