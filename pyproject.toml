@@ -1,6 +1,6 @@
 [project]
 name = "metalgrow"
-version = "0.1.1"
+version = "0.2.0"
 description = "AI-powered image upscaler accelerated on Apple Metal (MPS)."
 readme = "README.md"
 requires-python = ">=3.11"

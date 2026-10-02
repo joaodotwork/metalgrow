@@ -6,6 +6,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-02
+
+Print- and archive-oriented release: scanned newspaper/magazine pages can
+now be cleaned and upscaled for publication without losing their print
+metadata.
+
+### Added
+
+- **Descreen (`--descreen`, `metalgrow descreen`).** Removes halftone
+  screens (moiré) from scanned print before the backbone runs, so SR models
+  don't sharpen the dot lattice into moiré. Detection is local (windowed
+  FFT) and only notches regions that hold a genuine 2-D dot lattice; type,
+  rules and blank paper come back unchanged. Handles several differently
+  screened photos per page, screen harmonics, and dark/busy photo areas.
+  Opt-in via `upscale --descreen [--descreen-strength]`, a standalone
+  `metalgrow descreen SRC DST [-p]` command, or
+  `Upscaler(descreen=True)`. Design in
+  [ADR 0002](docs/adr/0002-descreen.md) (#29, #30).
+- **`--preserve-metadata` / `-p`.** Keeps the embedded ICC profile, the DPI
+  tag (rescaled by the upscale ratio so physical size is unchanged), and
+  grayscale color mode across an upscale. Wired through single-file and
+  batch paths (#28).
+
+### Changed
+
+- **Learned backbones accept any `--scale`.** Real-ESRGAN / SwinIR run their
+  native factor and Lanczos-resample to the exact requested size instead of
+  rejecting non-native factors (e.g. `--scale 1.5` now works) (#28).
+
+### Fixed
+
+- `metalgrow.__version__` reported `0.0.1` in every release; it is now read
+  from the installed package metadata.
+- CI: apply newer ruff's Markdown code-block formatting to `docs/usage.md`
+  (#31).
+
 ## [0.1.1] — 2026-04-13
 
 ### Fixed
@@ -71,6 +107,7 @@ against a prior version.
   `driver_allocated_memory`, which includes allocator pool reservations —
   interpret it as "working set size", not a strict activation peak.
 
-[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/joaodotwork/metalgrow/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.1
 [0.1.0]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.0
