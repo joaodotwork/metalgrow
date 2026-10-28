@@ -37,6 +37,8 @@ plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
 - 🧱 **Tiled inference** — process arbitrarily large images with feathered overlap blending
 - 📂 **Batch mode** — upscale whole directories or globs with a progress bar
 - 🖨️ **Print-aware** — `--preserve-metadata` keeps grayscale mode, the ICC profile, and a rescaled DPI tag intact
+- 🖋️ **Ink mode** — `--alpha-mode ink` upscales ink-on-transparent line art through its coverage, so the SR model sees the drawing instead of a flat colour plane
+- ⬛ **1-bit masters** — `metalgrow bitmap` writes Group 4 line-art TIFFs at 1200 ppi (resampled before thresholding, so edges stay smooth)
 - 📰 **Descreen** — `--descreen` removes halftone screens (moiré) from scanned print before upscaling, leaving text and linework untouched
 - 📦 **Model registry** — `metalgrow models` manages cached weights with sha256 verification
 - 🧪 **Tested** — pytest suite covering the CPU baseline, tiling, batch mode, and registry
@@ -85,7 +87,7 @@ metalgrow upscale "./photos/*.png" ./out --scale 2 --skip-existing
 | --------------------- | ------------- | --------------------------------------------------------------- |
 | `--scale`, `-s`       | `2.0`         | Upscale factor (1.01–8.0); learned backbones run their native factor then resample to this exact target |
 | `--device`, `-d`      | `auto`        | `auto` \| `mps` \| `cuda` \| `cpu`                              |
-| `--backbone`, `-b`    | `bicubic`     | `bicubic` \| `realesrgan-x{2,4}` \| `swinir-x{2,4}`             |
+| `--backbone`, `-b`    | `bicubic`     | `bicubic` \| `realesrgan-x{2,4}` \| `realesrgan-anime-x4` \| `swinir-x{2,4}` |
 | `--dtype`             | `fp32`        | `fp32` \| `fp16` (fp16 is MPS-only and noisier)                 |
 | `--tile`              | backbone hint | Tile size in input px for tiled inference (`0` disables)        |
 | `--tile-pad`          | backbone hint | Context padding per tile edge (covers backbone receptive field) |
@@ -94,6 +96,8 @@ metalgrow upscale "./photos/*.png" ./out --scale 2 --skip-existing
 | `--workers`, `-j`     | `4`           | Batch mode: parallel I/O workers (inference stays serial)       |
 | `--descreen`          | off           | Remove halftone screens (moiré) from scanned print before the backbone runs |
 | `--descreen-strength` | `1.0`         | Notch depth, `0`–`1`                                            |
+| `--alpha-mode`        | `separate`    | `ink` upscales single-colour line art through its alpha (and knocks out paper); `auto` detects it |
+| `--dpi`               | off           | Write this DPI tag instead of the source's rescaled one         |
 
 #### Descreen scanned print
 
@@ -110,6 +114,17 @@ metalgrow upscale scan.tif out.tif --descreen -p --scale 1.5 -b swinir-x2
 # descreen only, no resize
 metalgrow descreen scan.tif clean.tif -p
 ```
+
+#### Line art for print
+
+```bash
+# ink-on-transparent drawings: 4x, coverage-aware, tagged 300 dpi
+metalgrow upscale ./drawings ./png -s 4 -b realesrgan-x4 --alpha-mode ink -p --dpi 300
+# then 1-bit Group 4 masters at 1200 ppi, same physical size
+metalgrow bitmap ./png ./tiff
+```
+
+See [ADR 0003](./docs/adr/0003-alpha-ink-mode.md) for how ink mode works.
 
 #### Manage cached model weights
 

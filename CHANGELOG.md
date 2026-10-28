@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Ink mode (`--alpha-mode ink|auto`).** Ink-on-transparent line art keeps
+  its detail in alpha over a flat RGB plane, which the default path upscaled
+  with plain bicubic. Ink mode composites over white, runs the backbone on
+  that, and reads luminance back as alpha over the ink colour; opaque scans
+  get their paper knocked out on the same path. Neutral ink is written as
+  `LA`; with `-p`, an RGB ICC profile is dropped from it rather than written
+  onto a grey image. Design in [ADR 0003](docs/adr/0003-alpha-ink-mode.md).
+- **`realesrgan-anime-x4` backbone** (Real-ESRGAN x4plus anime 6B), a
+  lighter RRDB tuned for illustration.
+- **`--dpi`** overrides the output DPI tag, for "print at N dpi" jobs.
+- **`metalgrow bitmap`.** 1-bit Group 4 line-art masters (default 1200 ppi)
+  from ink coverage, resampled before thresholding so edges stay smooth.
+  Built in strips that are bit-identical to a single-pass resample, so 38k px
+  masters stay within memory.
+
 ## [0.2.0] — 2026-10-02
 
 Print- and archive-oriented release: scanned newspaper/magazine pages can
