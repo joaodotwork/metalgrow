@@ -6,6 +6,7 @@ from PIL import Image
 
 from metalgrow.backbones import list_backbones
 from metalgrow.batch import discover_inputs, plan_outputs, run_batch
+from metalgrow.bitmap import to_bitmap
 from metalgrow.descreen import descreen as descreen_image
 from metalgrow.ink import ALPHA_MODES
 from metalgrow.metadata import capture, reapply
@@ -177,6 +178,48 @@ def descreen_cmd(
         else:
             result.save(out_path)
         typer.echo(f"{in_path.name}: {report.describe(_dpi(in_path))} -> {out_path}")
+
+
+@app.command("bitmap")
+def bitmap_cmd(
+    src: str = typer.Argument(..., help="Image file, directory, or glob"),
+    dst: Path = typer.Argument(..., help="Output .tif (single src) or directory (batch)"),
+    ppi: int = typer.Option(1200, "--ppi", min=1, help="Master resolution"),
+    threshold: int = typer.Option(
+        128, "--threshold", min=1, max=255, help="Coverage level counted as ink, 1..255"
+    ),
+    src_dpi: float | None = typer.Option(
+        None, "--src-dpi", min=1.0, help="Source DPI if the file's tag is missing or wrong"
+    ),
+):
+    """1-bit line-art masters (Group 4 TIFF) at the same physical size."""
+    try:
+        inputs = discover_inputs(src)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(f"source not found: {exc}") from None
+    if not inputs:
+        raise typer.BadParameter(f"no images found at {src!r}")
+
+    batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
+    if batch_mode:
+        if dst.exists() and not dst.is_dir():
+            raise typer.BadParameter(f"batch destination must be a directory: {dst}")
+        items = [(s, d.with_suffix(".tif")) for s, d in plan_outputs(inputs, dst)]
+    else:
+        items = [(inputs[0], dst)]
+
+    for in_path, out_path in items:
+        with Image.open(in_path) as image:
+            if src_dpi is None and "dpi" not in image.info:
+                typer.echo(f"{in_path.name}: no DPI tag; keeping pixel size (pass --src-dpi)")
+            master = to_bitmap(image, ppi=ppi, threshold=threshold, src_dpi=src_dpi)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        master.save(out_path, format="TIFF", compression="group4", dpi=(ppi, ppi))
+        cm = 2.54 / ppi
+        typer.echo(
+            f"{in_path.name}: {master.width}x{master.height} @ {ppi} ppi "
+            f"({master.width * cm:.1f} x {master.height * cm:.1f} cm) -> {out_path}"
+        )
 
 
 def _dpi(path: Path) -> float | None:
