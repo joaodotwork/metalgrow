@@ -33,6 +33,14 @@ REGISTRY: dict[str, WeightSpec] = {
         ),
         sha256="4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
     ),
+    "realesrgan-anime-x4": WeightSpec(
+        name="RealESRGAN_x4plus_anime_6B.pth",
+        url=(
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/"
+            "RealESRGAN_x4plus_anime_6B.pth"
+        ),
+        sha256="f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da",
+    ),
     "swinir-x2": WeightSpec(
         name="001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth",
         url=(

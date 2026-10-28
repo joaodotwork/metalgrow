@@ -73,13 +73,15 @@ def _load(src: Path, preserve_metadata: bool = False) -> tuple[Image.Image, dict
     return image.convert(mode), meta
 
 
-def _save(image: Image.Image, dst: Path, meta: dict | None = None) -> None:
+def _save(
+    image: Image.Image, dst: Path, meta: dict | None = None, dpi: float | None = None
+) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if meta is not None:
-        image, save_kwargs = reapply(image, meta)
+        image, save_kwargs = reapply(image, meta, dpi=dpi)
         image.save(dst, **save_kwargs)
     else:
-        image.save(dst)
+        image.save(dst, **({"dpi": (dpi, dpi)} if dpi is not None else {}))
 
 
 def _prefetch(
@@ -120,6 +122,7 @@ def run_batch(
     workers: int = 4,
     skip_existing: bool = False,
     preserve_metadata: bool = False,
+    dpi: float | None = None,
     progress: bool = True,
 ) -> BatchResult:
     """Run ``upscaler`` over each (src, dst) pair, returning counts."""
@@ -157,7 +160,7 @@ def run_batch(
                     bar.console.log(f"[red]upscale failed[/red] {src}: {exc}")
                     bar.advance(task)
                     continue
-                write_futs.append(pool.submit(_save, out, dst, meta))
+                write_futs.append(pool.submit(_save, out, dst, meta, dpi))
                 processed += 1
                 bar.advance(task)
 

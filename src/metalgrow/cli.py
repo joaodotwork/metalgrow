@@ -7,6 +7,7 @@ from PIL import Image
 from metalgrow.backbones import list_backbones
 from metalgrow.batch import discover_inputs, plan_outputs, run_batch
 from metalgrow.descreen import descreen as descreen_image
+from metalgrow.ink import ALPHA_MODES
 from metalgrow.metadata import capture, reapply
 from metalgrow.upscaler import Upscaler
 from metalgrow.weights import (
@@ -62,9 +63,20 @@ def upscale(
     descreen_strength: float = typer.Option(
         1.0, "--descreen-strength", min=0.0, max=1.0, help="Notch depth, 0..1"
     ),
+    alpha_mode: str = typer.Option(
+        "separate",
+        "--alpha-mode",
+        help="separate (backbone on RGB, bicubic alpha) | ink (single-colour art: "
+        "backbone on coverage, paper knocked out) | auto (ink when the art is one colour)",
+    ),
+    dpi: float | None = typer.Option(
+        None, "--dpi", min=1.0, help="Write this DPI tag instead of the source's (rescaled)"
+    ),
 ):
     if dtype not in _DTYPES:
         raise typer.BadParameter(f"dtype must be one of {list(_DTYPES)}")
+    if alpha_mode not in ALPHA_MODES:
+        raise typer.BadParameter(f"alpha-mode must be one of {list(ALPHA_MODES)}")
     try:
         inputs = discover_inputs(src)
     except FileNotFoundError as exc:
@@ -78,12 +90,15 @@ def upscale(
         dtype=_DTYPES[dtype],
         descreen=descreen,
         descreen_strength=descreen_strength,
+        alpha_mode=alpha_mode,
     )
     typer.echo(f"device: {upscaler.device}")
     typer.echo(f"backbone: {backbone}")
     typer.echo(f"dtype: {dtype}")
     if descreen:
         typer.echo(f"descreen: strength {descreen_strength}")
+    if alpha_mode != "separate":
+        typer.echo(f"alpha-mode: {alpha_mode}")
 
     batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
 
@@ -95,6 +110,7 @@ def upscale(
             tile=tile,
             tile_pad=tile_pad,
             preserve_metadata=preserve_metadata,
+            dpi=dpi,
         )
         if upscaler.last_descreen is not None:
             typer.echo(f"descreen: {upscaler.last_descreen.describe(_dpi(inputs[0]))}")
@@ -115,6 +131,7 @@ def upscale(
         workers=workers,
         skip_existing=skip_existing,
         preserve_metadata=preserve_metadata,
+        dpi=dpi,
     )
     typer.echo(
         f"done: {result.processed} processed, {result.skipped} skipped, "

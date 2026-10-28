@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
@@ -9,6 +10,7 @@ from torchvision.transforms.functional import pil_to_tensor, to_pil_image
 from metalgrow.backbones import get_backbone
 from metalgrow.descreen import DescreenReport, descreen
 from metalgrow.device import get_device
+from metalgrow.ink import ALPHA_MODES, InkMatte, is_single_ink
 from metalgrow.metadata import capture, reapply
 
 
@@ -28,12 +30,16 @@ class Upscaler:
         dtype: torch.dtype = torch.float32,
         descreen: bool = False,
         descreen_strength: float = 1.0,
+        alpha_mode: str = "separate",
     ):
+        if alpha_mode not in ALPHA_MODES:
+            raise ValueError(f"alpha_mode must be one of {ALPHA_MODES}, got {alpha_mode!r}")
         self.device = get_device(device)
         self.dtype = dtype
         self.backbone = get_backbone(backbone, self.device, dtype)
         self.descreen = descreen
         self.descreen_strength = descreen_strength
+        self.alpha_mode = alpha_mode
         # Report from the most recent ``upscale`` call (None when descreen is off).
         self.last_descreen: DescreenReport | None = None
 
@@ -59,6 +65,9 @@ class Upscaler:
         if self.descreen:
             image, self.last_descreen = descreen(image, self.descreen_strength)
 
+        if self.alpha_mode == "ink" or (self.alpha_mode == "auto" and is_single_ink(image)):
+            return self._upscale_ink(image, native, target, tile, tile_pad)
+
         tensor = pil_to_tensor(image).to(self.device, self.dtype).unsqueeze(0) / 255.0
         _, c, _, _ = tensor.shape
 
@@ -80,6 +89,27 @@ class Upscaler:
             result = result.resize(target, Image.LANCZOS)
         return result
 
+    def _upscale_ink(
+        self,
+        image: Image.Image,
+        native: float,
+        target: tuple[int, int],
+        tile: int | None,
+        tile_pad: int | None,
+    ) -> Image.Image:
+        # Run the backbone on the artwork composited over white paper, then
+        # read the upscaled luminance back as alpha. See metalgrow.ink.
+        matte, luma = InkMatte.fit(image)
+        paper = luma.to(self.device, self.dtype).expand(-1, 3, -1, -1).contiguous()
+        if self.backbone.input_channels not in (None, 3):
+            paper = paper[:, :1]
+        out = self._run_backbone(paper, native, tile, tile_pad).clamp(0.0, 1.0)
+        plane = out.mean(dim=1)[0].float().cpu().numpy()
+        if plane.shape[::-1] != target:
+            # Float-mode resample, so the coverage math sees no 8-bit banding.
+            plane = np.asarray(Image.fromarray(plane).resize(target, Image.LANCZOS))
+        return matte.compose(plane)
+
     def _select_native_scale(self, scale: float) -> float:
         """The factor to actually run the backbone at before resampling.
 
@@ -100,6 +130,7 @@ class Upscaler:
         tile: int | None = None,
         tile_pad: int | None = None,
         preserve_metadata: bool = False,
+        dpi: float | None = None,
     ) -> Path:
         image = Image.open(src)
         meta = capture(image) if preserve_metadata else None
@@ -108,10 +139,10 @@ class Upscaler:
         result = self.upscale(image, scale=scale, tile=tile, tile_pad=tile_pad)
         dst.parent.mkdir(parents=True, exist_ok=True)
         if meta is not None:
-            result, save_kwargs = reapply(result, meta)
+            result, save_kwargs = reapply(result, meta, dpi=dpi)
             result.save(dst, **save_kwargs)
         else:
-            result.save(dst)
+            result.save(dst, **({"dpi": (dpi, dpi)} if dpi is not None else {}))
         return dst
 
     def _run_backbone(
