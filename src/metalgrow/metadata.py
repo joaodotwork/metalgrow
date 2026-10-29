@@ -28,12 +28,13 @@ def capture(image: Image.Image) -> dict:
     }
 
 
-def reapply(result: Image.Image, meta: dict) -> tuple[Image.Image, dict]:
+def reapply(result: Image.Image, meta: dict, dpi: float | None = None) -> tuple[Image.Image, dict]:
     """Restore grayscale mode and return ``(image, save_kwargs)``.
 
     ``save_kwargs`` carries the ICC profile (verbatim) and a DPI rescaled by the
     upscale ratio, so passing it to ``Image.save`` preserves both the color
-    pipeline and the physical dimensions of the placed image.
+    pipeline and the physical dimensions of the placed image. ``dpi``
+    overrides the rescaled tag, for jobs specified as "print at N dpi".
     """
     src_mode = meta.get("mode")
     if src_mode in GRAYSCALE_MODES and result.mode not in ("L", "LA"):
@@ -41,13 +42,17 @@ def reapply(result: Image.Image, meta: dict) -> tuple[Image.Image, dict]:
 
     save_kwargs: dict = {}
     icc = meta.get("icc_profile")
-    if icc:
+    # An RGB profile on a grey image is invalid (ink mode can turn RGBA into
+    # LA), so only carry the profile across when its colour space still fits.
+    if icc and not (result.mode in ("L", "LA") and icc[16:20] == b"RGB "):
         save_kwargs["icc_profile"] = icc
 
-    dpi = meta.get("dpi")
+    src_dpi = meta.get("dpi")
     size = meta.get("size")
-    if dpi and size and size[0]:
+    if dpi is not None:
+        save_kwargs["dpi"] = (dpi, dpi)
+    elif src_dpi and size and size[0]:
         ratio = result.width / size[0]
-        save_kwargs["dpi"] = (dpi[0] * ratio, dpi[1] * ratio)
+        save_kwargs["dpi"] = (src_dpi[0] * ratio, src_dpi[1] * ratio)
 
     return result, save_kwargs

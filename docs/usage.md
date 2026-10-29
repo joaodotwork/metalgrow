@@ -65,12 +65,47 @@ for the escape hatches (fallback toggle, dtype).
 | --------------------- | ------------- | --------------------------------------------------------------- |
 | `--scale`, `-s`       | `2.0`         | Upscale factor (1.01–8.0). Learned backbones lock this to their trained scale. |
 | `--device`, `-d`      | `auto`        | `auto` \| `mps` \| `cuda` \| `cpu`                              |
-| `--backbone`, `-b`    | `bicubic`     | `bicubic` \| `realesrgan-x{2,4}` \| `swinir-x{2,4}`             |
+| `--backbone`, `-b`    | `bicubic`     | `bicubic` \| `realesrgan-x{2,4}` \| `realesrgan-anime-x4` \| `swinir-x{2,4}` |
 | `--dtype`             | `fp32`        | `fp32` \| `fp16`. fp16 is MPS-only, ~2× faster, noticeably noisier on smooth gradients. |
 | `--tile`              | backbone hint | Tile size in input px for tiled inference. `0` disables.        |
 | `--tile-pad`          | backbone hint | Context padding per tile edge. Sized to the backbone's receptive field. |
 | `--skip-existing`     | off           | Batch mode only. Skip outputs that already exist.               |
 | `--workers`, `-j`     | `4`           | Batch mode only. Parallel I/O workers (inference stays serial). |
+| `--alpha-mode`        | `separate`    | `separate` \| `ink` \| `auto`. See [Ink-on-transparent artwork](#ink-on-transparent-artwork). |
+| `--dpi`               | off           | Write this DPI tag instead of the source's (rescaled) one.      |
+
+### Ink-on-transparent artwork
+
+Scanned drawings knocked out of their paper keep all their detail in the
+alpha channel; the RGB is one flat colour. The default `separate` mode runs
+the backbone on that flat RGB and bicubics the alpha, so the drawing gets a
+plain bicubic. `--alpha-mode ink` composites the art over white paper, runs
+the backbone on that, and reads the upscaled luminance back as alpha over the
+ink colour. Opaque black-on-paper scans go through the same path and come
+out with the paper knocked out. Neutral ink is written as grey + alpha
+(`LA`). `auto` picks `ink` for transparent single-colour art. See
+[ADR 0003](./adr/0003-alpha-ink-mode.md).
+
+```bash
+# line art for print: 4x, ink mode, tagged 300 dpi
+metalgrow upscale ./drawings ./out -s 4 -b realesrgan-x4 --alpha-mode ink -p --dpi 300
+```
+
+### 1-bit line-art masters
+
+`metalgrow bitmap SRC DST` turns ink coverage (alpha, or inverted luminance
+for an opaque scan) into a 1-bit Group 4 TIFF at `--ppi` (default 1200),
+keeping the physical size from the source's DPI tag (`--src-dpi` overrides a
+missing or wrong tag). Coverage is Lanczos-resampled to the target ppi
+*before* thresholding at `--threshold` (default 128 = 50 %), so edges stay
+smooth instead of printing the source's stair-steps. Faint marks below the
+threshold drop out. Large masters are built in strips that are bit-identical
+to a single-pass resample.
+
+```bash
+metalgrow bitmap ./out ./masters            # directory -> *.tif
+metalgrow bitmap art.png art.tif --ppi 2400
+```
 
 ## Library
 
@@ -97,8 +132,10 @@ result.save("out.png")
 
 ### `Upscaler.upscale(image, scale, tile=None, tile_pad=None)`
 
-Takes a `PIL.Image`, returns a `PIL.Image`. Alpha handling is automatic:
-RGBA inputs run the backbone on the RGB plane and bicubic the alpha.
+Takes a `PIL.Image`, returns a `PIL.Image`. With `alpha_mode="separate"`
+(default) RGBA inputs run the backbone on the RGB plane and bicubic the
+alpha; `"ink"` / `"auto"` route single-colour art through its coverage
+instead (see above).
 `tile` / `tile_pad` override the backbone's defaults; leave them `None`
 to auto-tile whenever either image dimension exceeds the default tile size.
 

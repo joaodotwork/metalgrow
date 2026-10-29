@@ -9,8 +9,11 @@ two learned models. Pick one on the CLI (`--backbone <name>`) or from Python
 | `bicubic`        | analytical  | any    | low                  | very fast   | very fast   | negligible | smoke tests, baselines, CI        |
 | `realesrgan-x2`  | CNN (RRDB)  | 2      | high                 | slow        | fast        | ~1.1 GiB   | photo restoration, real-world SR  |
 | `realesrgan-x4`  | CNN (RRDB)  | 4      | high                 | slow        | fast        | ~1.1 GiB   | photo restoration, real-world SR  |
+| `realesrgan-anime-x4` | CNN (RRDB, 6 blocks) | 4 | high (flat art) | — | very fast¹ | — | illustration, clean linework |
 | `swinir-x2`      | transformer | 2      | very high            | slow        | medium      | ~1.1 GiB   | clean photographic content        |
 | `swinir-x4`      | transformer | 4      | very high            | slow        | medium      | ~1.1 GiB   | clean photographic content        |
+
+¹ Not in the benchmark snapshot yet. On ink-mode line art it ran ~3× faster than `realesrgan-x4` on MPS (43 s vs 130 s for the same three illustrations).
 
 ## How to choose
 

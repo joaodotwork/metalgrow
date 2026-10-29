@@ -54,3 +54,5 @@ def _factory(registry_key: str):
 
 register("realesrgan-x2", _factory("realesrgan-x2"))
 register("realesrgan-x4", _factory("realesrgan-x4"))
+# 6-block RRDB trained on illustration: flat fills and clean linework.
+register("realesrgan-anime-x4", _factory("realesrgan-anime-x4"))
