@@ -12,9 +12,10 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
 `metalgrow` runs super-resolution on Apple Silicon GPUs through PyTorch's MPS
-backend, with graceful fallbacks to CUDA and CPU. It ships with a bicubic
-baseline so the pipeline is runnable end-to-end, and exposes a clean seam for
-plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
+backend, with graceful fallbacks to CUDA and CPU. It runs learned backbones
+(Real-ESRGAN, SwinIR) behind one stable API, with a bicubic baseline that
+needs no weights, and has print-oriented tools for scans and line art:
+metadata preservation, descreening, ink mode and 1-bit masters.
 
 ---
 
@@ -33,7 +34,7 @@ plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
 
 - 🍎 **Apple Metal first** — PyTorch MPS backend, zero config on Apple Silicon
 - 🔁 **Portable** — automatic fallback to CUDA / CPU when MPS isn't available
-- 🧩 **Pluggable backbones** — bicubic, Real-ESRGAN (x2/x4), SwinIR (x2/x4)
+- 🧩 **Pluggable backbones** — bicubic, Real-ESRGAN (x2/x4, anime x4), SwinIR (x2/x4)
 - 🧱 **Tiled inference** — process arbitrarily large images with feathered overlap blending
 - 📂 **Batch mode** — upscale whole directories or globs with a progress bar
 - 🖨️ **Print-aware** — `--preserve-metadata` keeps grayscale mode, the ICC profile, and a rescaled DPI tag intact
@@ -49,6 +50,14 @@ plugging in a learned backbone (Real-ESRGAN, SwinIR, etc.).
 - macOS with Apple Silicon for MPS acceleration (optional — CPU/CUDA also work)
 
 ## Install
+
+From PyPI:
+
+```bash
+pip install metalgrow
+```
+
+From source:
 
 ```bash
 git clone https://github.com/joaodotwork/metalgrow.git
@@ -166,8 +175,10 @@ src/metalgrow/
   batch.py             # directory / glob batch mode
   descreen.py          # local FFT notch filter for halftone screens
   metadata.py          # ICC / DPI / grayscale capture + reapply
+  ink.py               # single-ink detection + coverage matte (ink mode)
+  bitmap.py            # 1-bit line-art masters
   weights.py           # weight registry, sha256 verification, cache management
-  cli.py               # typer CLI (upscale, descreen, info, models)
+  cli.py               # typer CLI (upscale, descreen, bitmap, info, models)
   backbones/           # bicubic, realesrgan, swinir; plugin registry
 tests/
 docs/
@@ -175,6 +186,7 @@ docs/
   models.md            # backbone comparison, benchmark snapshot, tiling
   benchmarks.md        # full (device × backbone × scale) tables
   architecture.md      # module layout, data flow, extension points
+  adr/                 # design decisions (backbone dependency, descreen, ink mode)
 ```
 
 ## Roadmap
@@ -186,7 +198,10 @@ docs/
 - [x] Second backbone family (SwinIR)
 - [x] GitHub Actions CI (lint + test on macOS + Linux)
 - [x] Benchmarks: MPS vs CPU (CUDA pending GPU runner)
-- [ ] v0.1.0 release
+- [x] PyPI releases (trusted publishing)
+- [x] Print workflows: metadata preservation, descreen, ink mode, 1-bit masters
+- [ ] CUDA benchmarks
+- [ ] Integration tests against real weights
 
 ## Contributing
 

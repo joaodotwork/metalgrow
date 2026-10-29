@@ -123,12 +123,17 @@ result = upscaler.upscale(
 result.save("out.png")
 ```
 
-### `Upscaler(backbone, device, dtype)`
+### `Upscaler(backbone, device, dtype, descreen, descreen_strength, alpha_mode)`
 
 - `backbone` — name from `metalgrow.backbones.list_backbones()`. Default `"bicubic"`.
 - `device` — `"auto"` | `"mps"` | `"cuda"` | `"cpu"`. `auto` prefers
   MPS → CUDA → CPU. Resolved once at construction.
 - `dtype` — `torch.float32` (default) or `torch.float16`.
+- `descreen` / `descreen_strength` — remove halftone screens before the
+  backbone runs (default off, strength `1.0`). The last call's report is on
+  `upscaler.last_descreen`.
+- `alpha_mode` — `"separate"` (default) | `"ink"` | `"auto"`. See
+  [Ink-on-transparent artwork](#ink-on-transparent-artwork).
 
 ### `Upscaler.upscale(image, scale, tile=None, tile_pad=None)`
 
@@ -139,10 +144,19 @@ instead (see above).
 `tile` / `tile_pad` override the backbone's defaults; leave them `None`
 to auto-tile whenever either image dimension exceeds the default tile size.
 
-### `Upscaler.upscale_file(src, dst, scale, tile=None, tile_pad=None)`
+### `Upscaler.upscale_file(src, dst, scale, tile=None, tile_pad=None, preserve_metadata=False, dpi=None)`
 
 File-in, file-out convenience. Creates `dst.parent` if needed. Used by
-the CLI's single-file path.
+the CLI's single-file path. `preserve_metadata` keeps grayscale mode, ICC
+profile and a rescaled DPI tag; `dpi` writes that DPI tag instead.
+
+### `metalgrow.bitmap.to_bitmap(image, ppi=1200, threshold=128, src_dpi=None)`
+
+Returns a mode `1` master at `ppi`, the same physical size as `image`
+(`src_dpi` defaults to its DPI tag). Coverage is alpha, or inverted
+luminance for an opaque scan. The CLI saves it with
+`compression="group4", dpi=(ppi, ppi)`; the returned image carries no DPI
+tag of its own.
 
 ### Batch mode from Python
 
@@ -175,10 +189,11 @@ parallelises image I/O around the inference step.
 
 ## Common pitfalls
 
-- **"ValueError: backbone … supports scales [2.0, 4.0]"** — learned backbones
-  bake the scale into the weights. Match `--scale` to the backbone suffix:
-  `realesrgan-x2` ↔ `--scale 2`, `realesrgan-x4` ↔ `--scale 4`.
-- **Slow first run** — learned backbones download weights (67–130 MB) on
+- **Wasted work at a mismatched scale** — learned backbones run at their
+  native factor and then resample to `--scale`, so `realesrgan-x4` at
+  `--scale 2` does a full 4x pass and throws three quarters away. Pick the
+  backbone whose suffix is closest to (and not below) the target.
+- **Slow first run** — learned backbones download weights (18–67 MB) on
   first use. Pre-fetch with `metalgrow models download <name>` to keep
   timing runs honest.
 - **Out-of-memory on large images** — `Upscaler` auto-tiles when either
