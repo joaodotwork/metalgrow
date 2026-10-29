@@ -24,17 +24,18 @@ pieces are, how they fit together, and the seams we intend to extend.
         │                  │                   │
         ▼                  ▼                   ▼
      parse         image I/O + tensor      torch.nn.Module
-     flags         conversion              (bicubic today,
-                                            learned later)
+     flags         conversion, alpha,      (bicubic, or learned
+                   descreen, metadata       via spandrel)
 ```
 
 1. **CLI** (`metalgrow.cli`) parses arguments and resolves paths.
 2. **Upscaler** (`metalgrow.upscaler`) is the stable public interface. It
-   owns image I/O, tensor conversion, and orchestrates the backbone call.
+   owns image I/O, tensor conversion, alpha handling and the optional
+   descreen pre-pass, and orchestrates the backbone call.
 3. **Backbone** (`metalgrow.backbones`) is the actual super-resolution
    operation. `bicubic` is always available (no weights); learned
-   backbones (`realesrgan-x2` / `realesrgan-x4`, `swinir-x2` /
-   `swinir-x4`) load weights via `metalgrow.weights` and run through
+   backbones (`realesrgan-x2` / `realesrgan-x4` / `realesrgan-anime-x4`,
+   `swinir-x2` / `swinir-x4`) load weights via `metalgrow.weights` and run through
    spandrel.
 4. **Device** (`metalgrow.device`) picks the torch device once per process
    using a strict preference order.
@@ -59,12 +60,22 @@ The `Upscaler` class is the public API. Responsibilities:
 
 - Hold the resolved `torch.device` and a single `Backbone` instance.
 - Convert PIL → float tensor in `[0, 1]`, run the backbone, convert back.
-- **Alpha handling.** When the input has an alpha channel and the
-  backbone advertises `input_channels == 3`, `Upscaler` runs the
-  backbone on the RGB plane and bicubic-upscales the alpha channel
-  separately, then recombines. Alpha is out-of-distribution for
-  RGB-trained SR models, so this preserves transparency without
-  corrupting it.
+- **Alpha handling**, chosen by `alpha_mode`:
+  - `separate` (default): when the input has an alpha channel and the
+    backbone advertises `input_channels == 3`, run the backbone on the
+    RGB plane and bicubic-upscale the alpha separately, then recombine.
+    Alpha is out-of-distribution for RGB-trained SR models, so this
+    preserves a cut-out mask without corrupting it.
+  - `ink`: for single-colour art whose detail lives in alpha. Composite
+    over white, run the backbone on that drawing, and map luminance back
+    to coverage over the ink colour (`metalgrow.ink`). Opaque scans take
+    the same path and lose their paper. See ADR 0003.
+  - `auto`: `ink` when the image is transparent and single-ink,
+    otherwise `separate`.
+- **Exact scale.** Learned backbones run at their native factor; the
+  result is Lanczos-resampled to the requested size.
+- **Descreen pre-pass** (opt-in): `metalgrow.descreen` notches halftone
+  screens before the backbone sees them. See ADR 0002.
 - **Tiled inference.** `_tiled_forward` slices the input into crops of
   `backbone.default_tile` with `backbone.default_tile_pad` pixels of
   context on each non-boundary edge, runs the backbone per tile, and
@@ -92,6 +103,31 @@ Small registry + cache layer for weight files. Downloads on first use,
 verifies SHA-256 on every call, removes corrupt files so a retry can
 re-download. Cache location overridable via `METALGROW_CACHE_DIR`.
 
+### `metalgrow.metadata`
+
+Captures grayscale mode, ICC profile and DPI from the source and
+reapplies them to the result (`-p`), rescaling the DPI tag so the
+physical size is kept, or writing an explicit `--dpi`. Drops an RGB ICC
+profile when the result is grey (`L` / `LA`), where it would be invalid.
+
+### `metalgrow.descreen`
+
+Local (windowed FFT) halftone detection and notch filtering. Runs
+standalone (`metalgrow descreen`) or as `Upscaler`'s pre-pass.
+
+### `metalgrow.ink`
+
+`is_single_ink` (the `auto` test) and `InkMatte`, which fits the ink and
+paper levels on the source and turns upscaled luminance back into
+coverage. Neutral ink comes back as `LA`.
+
+### `metalgrow.bitmap`
+
+1-bit line-art masters. Coverage is Lanczos-resampled to the target ppi
+*before* thresholding, in horizontal strips that are bit-identical to a
+single pass, so very large masters stay within memory. Independent of
+the backbones: it consumes an already-upscaled image.
+
 ### `metalgrow.batch`
 
 Directory / glob batch mode. Wraps `Upscaler` for multi-file runs with
@@ -102,9 +138,11 @@ delegates to this module when `SRC` is a directory or glob.
 
 A thin `typer` app. Commands:
 
-- `upscale SRC DST --scale --device --backbone --dtype --tile --tile-pad`
-  — the real work. Accepts a single file or a directory/glob (batch
-  mode via `metalgrow.batch`).
+- `upscale SRC DST --scale --device --backbone --dtype --tile --tile-pad
+  --alpha-mode --descreen -p --dpi` — the real work. Accepts a single file
+  or a directory/glob (batch mode via `metalgrow.batch`).
+- `descreen SRC DST` — halftone removal without resizing.
+- `bitmap SRC DST --ppi --threshold` — 1-bit Group 4 TIFF masters.
 - `info` — prints torch version and backend availability. Useful for
   verifying MPS is picked up on a fresh Apple Silicon machine.
 - `models {list,download,rm}` — inspects and manages the weight cache

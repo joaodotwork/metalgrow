@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-29
+
+Line-art release: single-ink illustrations can be upscaled through their
+coverage and written out as print-shop 1-bit masters.
+
 ### Added
 
 - **Ink mode (`--alpha-mode ink|auto`).** Ink-on-transparent line art keeps
@@ -22,6 +27,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from ink coverage, resampled before thresholding so edges stay smooth.
   Built in strips that are bit-identical to a single-pass resample, so 38k px
   masters stay within memory.
+
+### Documentation
+
+- Architecture, README and usage docs brought up to date: descreen,
+  metadata, ink and bitmap modules; `Upscaler` constructor options; PyPI
+  install; the scale pitfall that 0.2.0's exact-scale resampling removed.
 
 ## [0.2.0] — 2026-10-02
 
@@ -124,7 +135,8 @@ against a prior version.
   `driver_allocated_memory`, which includes allocator pool reservations —
   interpret it as "working set size", not a strict activation peak.
 
-[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/joaodotwork/metalgrow/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/joaodotwork/metalgrow/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.1
 [0.1.0]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.0
