@@ -283,6 +283,53 @@ def test_cli_bad_names_map_fails_before_writing(tmp_path, csv, message):
     assert not (tmp_path / "out").exists()
 
 
+def _digest(directory):
+    return {p.name: p.read_bytes() for p in sorted(directory.iterdir())}
+
+
+def test_cli_refuses_to_matte_a_file_over_itself(tmp_path):
+    src = tmp_path / "a.png"
+    _write(src, _scene())
+    before = src.read_bytes()
+    # Spelled differently, so only a resolved-path check catches it.
+    result = CliRunner().invoke(app, ["matte", str(src), str(tmp_path / "." / "a.png")])
+    assert result.exit_code != 0
+    assert "written over the source" in " ".join(result.output.replace("│", " ").split())
+    assert src.read_bytes() == before
+
+
+def test_cli_refuses_a_batch_into_its_own_source_directory(tmp_path):
+    src = tmp_path / "renders"
+    src.mkdir()
+    for name in ("a.png", "b.png"):
+        _write(src / name, _scene()[::4, ::4])
+    before = _digest(src)
+    result = CliRunner().invoke(app, ["matte", str(src), str(src)])
+    assert result.exit_code != 0
+    assert "written over the source" in " ".join(result.output.replace("│", " ").split())
+    assert _digest(src) == before
+
+
+def test_cli_refuses_a_names_row_mapping_onto_another_source(tmp_path):
+    src = _batch_dir(tmp_path)  # x_0001.jpg, y_0002.png
+    names = tmp_path / "names.csv"
+    names.write_text("x_0001.jpg,y_0002.png\ny_0002.png,y.png\n", encoding="utf-8")
+    before = _digest(src)
+    result = CliRunner().invoke(app, ["matte", str(src), str(src), "--names", str(names)])
+    assert result.exit_code != 0
+    assert "written over the source" in " ".join(result.output.replace("│", " ").split())
+    assert _digest(src) == before
+
+
+def test_batch_into_the_source_directory_is_fine_without_collisions(tmp_path):
+    src = tmp_path / "renders"
+    src.mkdir()
+    _write(src / "a.jpg", _scene()[::4, ::4])
+    result = CliRunner().invoke(app, ["matte", str(src), str(src)])
+    assert result.exit_code == 0, result.output
+    assert sorted(p.name for p in src.iterdir()) == ["a.jpg", "a.png"]
+
+
 def test_cli_names_rejected_for_single_file(tmp_path):
     _write(tmp_path / "a.png", _scene())
     names = tmp_path / "names.csv"

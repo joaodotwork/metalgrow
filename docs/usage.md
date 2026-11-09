@@ -115,7 +115,10 @@ everything the paper can't reach from the border through light pixels, stays
 opaque as drawn. The cast shadow outside it becomes translucent and
 recomposites exactly over the paper. The paper's faint haze is cleared.
 Outputs are RGBA PNGs tagged `--dpi` (default 300). Upscale first: the matte
-is per-pixel. See [ADR 0004](./adr/0004-matte-colour-art.md).
+is per-pixel. Sources are never overwritten: a run whose output would
+resolve to one of its inputs (`metalgrow matte renders/ renders/`, or
+`a.png a.png`) stops before writing anything. See
+[ADR 0004](./adr/0004-matte-colour-art.md).
 
 It needs scipy, which is an optional extra:
 

@@ -112,7 +112,9 @@ It is exposed as `metalgrow matte SRC DST [--seal] [--dpi] [--names]`.
   - a source listed twice;
   - two sources mapped to the same output;
   - a mapped source that isn't in the input;
-  - an output that isn't a plain `.png` file name.
+  - an output that isn't a plain `.png` file name;
+  - in any mode, an output that resolves to one of the inputs, so sources are never
+    overwritten.
 
   metalgrow never parses the Vanguard's markdown. An explicit map is also
   easier to check than a template.

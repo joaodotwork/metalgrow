@@ -237,7 +237,13 @@ def matte_cmd(
     ),
 ):
     """Knock the paper out of colour art: solid glass, translucent shadow (RGBA PNG)."""
-    from metalgrow.matte import MatteDependencyError, matte_file, plan_names, read_names
+    from metalgrow.matte import (
+        MatteDependencyError,
+        check_no_overwrite,
+        matte_file,
+        plan_names,
+        read_names,
+    )
 
     try:
         inputs = discover_inputs(src)
@@ -258,6 +264,7 @@ def matte_cmd(
             if dst.suffix.lower() != ".png":
                 raise typer.BadParameter(f"output must be a .png: {dst}")
             items = [(inputs[0], dst)]
+            check_no_overwrite(items)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from None
 

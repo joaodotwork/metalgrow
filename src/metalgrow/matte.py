@@ -199,8 +199,9 @@ def plan_names(
 ) -> list[tuple[Path, Path]]:
     """Map inputs to ``dst_dir / <stem>.png``, or to their name in ``names``.
 
-    Raises ``ValueError`` if ``names`` lists a source that isn't an input, or if
-    two inputs would be written to the same file.
+    Raises ``ValueError`` if ``names`` lists a source that isn't an input, if
+    two inputs would be written to the same file, or if an output is an input
+    (see :func:`check_no_overwrite`).
     """
     names = names or {}
     unknown = sorted(set(names) - {p.name for p in inputs})
@@ -212,4 +213,19 @@ def plan_names(
         if dst in seen:
             raise ValueError(f"{seen[dst].name} and {src.name} would both be written to {dst.name}")
         seen[dst] = src
+    check_no_overwrite(plan)
     return plan
+
+
+def check_no_overwrite(plan: list[tuple[Path, Path]]) -> None:
+    """Raise ``ValueError`` if any output resolves to any input of ``plan``.
+
+    Sources are read and closed before their output is written, so without
+    this check ``metalgrow matte renders/ renders/`` would replace the
+    sources with their mattes.
+    """
+    sources = {src.resolve(): src for src, _ in plan}
+    for src, dst in plan:
+        hit = sources.get(dst.resolve())
+        if hit is not None:
+            raise ValueError(f"{src.name} would be written over the source {hit}")
