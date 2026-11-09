@@ -128,6 +128,17 @@ coverage. Neutral ink comes back as `LA`.
 single pass, so very large masters stay within memory. Independent of
 the backbones: it consumes an already-upscaled image.
 
+### `metalgrow.matte`
+
+Colour-to-alpha matting for colour art on near-white paper. The glass is
+found by flood-filling the paper from the border and stays opaque as drawn;
+the shadow outside it is unmixed against the paper and stays translucent;
+the paper's alpha haze is cleared. An optional seal closes glass outlines
+that its highlights leave open. Pure numpy + `scipy.ndimage`. scipy is the
+`metalgrow[matte]` extra, imported lazily, and the module imports no torch.
+It consumes an already-upscaled image and is independent of the backbones.
+See ADR 0004.
+
 ### `metalgrow.batch`
 
 Directory / glob batch mode. Wraps `Upscaler` for multi-file runs with
@@ -143,6 +154,8 @@ A thin `typer` app. Commands:
   or a directory/glob (batch mode via `metalgrow.batch`).
 - `descreen SRC DST` — halftone removal without resizing.
 - `bitmap SRC DST --ppi --threshold` — 1-bit Group 4 TIFF masters.
+- `matte SRC DST --seal --dpi --names` — RGBA mattes of colour art on paper
+  (needs `metalgrow[matte]`).
 - `info` — prints torch version and backend availability. Useful for
   verifying MPS is picked up on a fresh Apple Silicon machine.
 - `models {list,download,rm}` — inspects and manages the weight cache

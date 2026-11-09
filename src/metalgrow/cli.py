@@ -222,6 +222,64 @@ def bitmap_cmd(
         )
 
 
+@app.command("matte")
+def matte_cmd(
+    src: str = typer.Argument(..., help="Image file, directory, or glob"),
+    dst: Path = typer.Argument(..., help="Output .png (single src) or directory (batch)"),
+    seal: bool = typer.Option(
+        False, "--seal", help="Close open glass outlines whose highlights let the paper in"
+    ),
+    dpi: float = typer.Option(300.0, "--dpi", min=1.0, help="DPI tag written to each PNG"),
+    names: Path | None = typer.Option(
+        None,
+        "--names",
+        help="CSV of 'source filename,output filename' rows to rename batch outputs",
+    ),
+):
+    """Knock the paper out of colour art: solid glass, translucent shadow (RGBA PNG)."""
+    from metalgrow.matte import (
+        MatteDependencyError,
+        check_no_overwrite,
+        matte_file,
+        plan_names,
+        read_names,
+    )
+
+    try:
+        inputs = discover_inputs(src)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(f"source not found: {exc}") from None
+    if not inputs:
+        raise typer.BadParameter(f"no images found at {src!r}")
+
+    batch_mode = len(inputs) > 1 or Path(src).is_dir() or any(ch in src for ch in "*?[")
+    try:
+        if batch_mode:
+            if dst.exists() and not dst.is_dir():
+                raise typer.BadParameter(f"batch destination must be a directory: {dst}")
+            items = plan_names(inputs, dst, read_names(names) if names else None)
+        else:
+            if names is not None:
+                raise typer.BadParameter("--names applies to batch mode only")
+            if dst.suffix.lower() != ".png":
+                raise typer.BadParameter(f"output must be a .png: {dst}")
+            items = [(inputs[0], dst)]
+            check_no_overwrite(items)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from None
+
+    for in_path, out_path in items:
+        try:
+            paper, glass = matte_file(in_path, out_path, seal=seal, dpi=dpi)
+        except MatteDependencyError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        typer.echo(
+            f"{in_path.name}: paper {paper.round(0).astype(int).tolist()}  "
+            f"glass {glass:.1%} -> {out_path}"
+        )
+
+
 def _dpi(path: Path) -> float | None:
     with Image.open(path) as im:
         dpi = im.info.get("dpi")

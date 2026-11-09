@@ -177,8 +177,9 @@ src/metalgrow/
   metadata.py          # ICC / DPI / grayscale capture + reapply
   ink.py               # single-ink detection + coverage matte (ink mode)
   bitmap.py            # 1-bit line-art masters
+  matte.py             # colour art on paper -> RGBA (solid glass, translucent shadow)
   weights.py           # weight registry, sha256 verification, cache management
-  cli.py               # typer CLI (upscale, descreen, bitmap, info, models)
+  cli.py               # typer CLI (upscale, descreen, bitmap, matte, info, models)
   backbones/           # bicubic, realesrgan, swinir; plugin registry
 tests/
 docs/

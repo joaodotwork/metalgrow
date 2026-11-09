@@ -107,6 +107,43 @@ metalgrow bitmap ./out ./masters            # directory -> *.tif
 metalgrow bitmap art.png art.tif --ppi 2400
 ```
 
+### Matting colour art on paper
+
+`metalgrow matte SRC DST` knocks the paper out of full-colour renders on
+near-white paper, for placing them on coloured pages. The glass, meaning
+everything the paper can't reach from the border through light pixels, stays
+opaque as drawn. The cast shadow outside it becomes translucent and
+recomposites exactly over the paper. The paper's faint haze is cleared.
+Outputs are RGBA PNGs tagged `--dpi` (default 300). Upscale first: the matte
+is per-pixel. Sources are never overwritten: a run whose output would
+resolve to one of its inputs (`metalgrow matte renders/ renders/`, or
+`a.png a.png`) stops before writing anything. See
+[ADR 0004](./adr/0004-matte-colour-art.md).
+
+It needs scipy, which is an optional extra:
+
+```bash
+pip install 'metalgrow[matte]'
+```
+
+```bash
+metalgrow upscale ./renders ./opaque-4x -s 4 -b realesrgan-x4
+metalgrow matte ./opaque-4x ./png-rgba --seal
+metalgrow matte drink.png drink-rgba.png
+```
+
+| Flag            | Default | Description |
+| --------------- | ------- | ----------- |
+| `--seal`        | off     | For glass with white highlights and no closed dark outline, where the paper floods in through the highlights and leaves holes. Closes small gaps between neutral strokes and keeps what they enclose as glass. Warm sepia hatching never seals. |
+| `--dpi`         | `300`   | DPI tag written to each PNG. |
+| `--names FILE`  | off     | Batch only. CSV of `source filename,output filename` rows; unlisted sources are written as `<stem>.png`. Blank and `#` lines are skipped. A duplicate source, two sources with the same output, an unknown source, or an output that isn't a plain `.png` name is an error before anything is written. |
+
+```csv
+# source,output
+the-velvet-aviation.png,01-aviation.png
+the-velvet-negroni.png,02-negroni.png
+```
+
 ## Library
 
 ```python
@@ -157,6 +194,15 @@ Returns a mode `1` master at `ppi`, the same physical size as `image`
 luminance for an opaque scan. The CLI saves it with
 `compression="group4", dpi=(ppi, ppi)`; the returned image carries no DPI
 tag of its own.
+
+### `metalgrow.matte.matte(rgb, seal=False)`
+
+Matte an `[H, W, 3]` float64 array in 0..255 (needs `metalgrow[matte]`).
+Returns `(colour, alpha, paper, glass)`: un-premultiplied colour, alpha in
+0..1, the sampled paper colour, and the fraction of the image that is glass.
+`to_rgba(colour, alpha)` quantises the result to an 8-bit RGBA image.
+`matte_image(image, seal)` and `matte_file(src, dst, seal, dpi)` wrap it for
+PIL images and files.
 
 ### Batch mode from Python
 
