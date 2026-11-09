@@ -14,7 +14,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# `metalgrow matte` (colour-to-alpha for colour art on paper) needs scipy.ndimage.
+matte = [
+    "scipy>=1.11",
+]
 dev = [
+    "scipy>=1.11",
     "pytest>=8.0",
     "ruff>=0.6",
     "pre-commit>=3.7",
