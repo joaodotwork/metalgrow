@@ -1,8 +1,5 @@
 from importlib.metadata import PackageNotFoundError, version
 
-from metalgrow.device import get_device
-from metalgrow.upscaler import Upscaler
-
 __all__ = ["Upscaler", "get_device"]
 
 try:
@@ -11,3 +8,17 @@ try:
     __version__ = version("metalgrow")
 except PackageNotFoundError:  # running from a source tree without install
     __version__ = "0.0.0"
+
+
+def __getattr__(name: str):
+    # Lazy (PEP 562), so torch-free submodules such as ``metalgrow.matte``
+    # can be imported without loading torch.
+    if name == "Upscaler":
+        from metalgrow.upscaler import Upscaler
+
+        return Upscaler
+    if name == "get_device":
+        from metalgrow.device import get_device
+
+        return get_device
+    raise AttributeError(f"module 'metalgrow' has no attribute {name!r}")
