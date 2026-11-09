@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-09
+
+Colour-art release: full-colour illustrations on paper can be matted for
+coloured pages, with solid glass and a translucent cast shadow.
+
 ### Added
 
 - **`metalgrow matte`.** Knocks the paper out of full-colour art on
@@ -151,7 +156,8 @@ against a prior version.
   `driver_allocated_memory`, which includes allocator pool reservations —
   interpret it as "working set size", not a strict activation peak.
 
-[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/joaodotwork/metalgrow/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/joaodotwork/metalgrow/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/joaodotwork/metalgrow/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/joaodotwork/metalgrow/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/joaodotwork/metalgrow/releases/tag/v0.1.1
