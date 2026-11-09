@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`metalgrow matte`.** Knocks the paper out of full-colour art on
+  near-white paper. The glass stays opaque as drawn, the cast shadow becomes
+  translucent and recomposites over the paper, and the paper's haze is
+  cleared. `--seal` closes glass outlines left open by white highlights.
+  `--names MAP.csv` renames batch outputs. This is a pixel-identical port of
+  The Vanguard's `matte_drinks.py`. It needs the new `metalgrow[matte]` extra
+  (scipy). Design in [ADR 0004](docs/adr/0004-matte-colour-art.md).
+
+### Changed
+
+- `import metalgrow` no longer imports torch: `Upscaler` and `get_device` are
+  loaded on first use, so torch-free modules such as `metalgrow.matte` stay
+  cheap to import.
+
 ## [0.3.0] — 2026-10-29
 
 Line-art release: single-ink illustrations can be upscaled through their
