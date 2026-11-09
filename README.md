@@ -40,6 +40,7 @@ metadata preservation, descreening, ink mode and 1-bit masters.
 - 🖨️ **Print-aware** — `--preserve-metadata` keeps grayscale mode, the ICC profile, and a rescaled DPI tag intact
 - 🖋️ **Ink mode** — `--alpha-mode ink` upscales ink-on-transparent line art through its coverage, so the SR model sees the drawing instead of a flat colour plane
 - ⬛ **1-bit masters** — `metalgrow bitmap` writes Group 4 line-art TIFFs at 1200 ppi (resampled before thresholding, so edges stay smooth)
+- 🍸 **Matte** — `metalgrow matte` knocks the paper out of colour art: the glass stays solid, the cast shadow stays translucent, and `--seal` closes outlines left open by highlights
 - 📰 **Descreen** — `--descreen` removes halftone screens (moiré) from scanned print before upscaling, leaving text and linework untouched
 - 📦 **Model registry** — `metalgrow models` manages cached weights with sha256 verification
 - 🧪 **Tested** — pytest suite covering the CPU baseline, tiling, batch mode, and registry
@@ -55,6 +56,7 @@ From PyPI:
 
 ```bash
 pip install metalgrow
+pip install 'metalgrow[matte]'   # adds scipy for `metalgrow matte`
 ```
 
 From source:
