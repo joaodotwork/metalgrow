@@ -4,6 +4,7 @@ Each rule has a test that fails when the rule is mutated (see the per-test
 "Rule:" line); the mutation run is recorded in the PR for #37.
 """
 
+import re
 import subprocess
 import sys
 
@@ -196,6 +197,12 @@ def test_missing_scipy_raises_with_install_hint(monkeypatch, tmp_path):
 # --- CLI ------------------------------------------------------------------
 
 
+def _plain(output):
+    """CLI output as one line: ANSI colour (forced on CI runners) and the
+    border of rich's error box, which wraps long messages, removed."""
+    return " ".join(re.sub(r"\x1b\[[0-9;]*m", "", output).replace("│", " ").split())
+
+
 def _write(path, rgb):
     Image.fromarray(rgb.astype(np.uint8)).save(path)
 
@@ -279,7 +286,7 @@ def test_cli_bad_names_map_fails_before_writing(tmp_path, csv, message):
         app, ["matte", str(src), str(tmp_path / "out"), "--names", str(names)]
     )
     assert result.exit_code != 0
-    assert message in " ".join(result.output.replace("│", " ").split())  # rich box wraps
+    assert message in _plain(result.output)
     assert not (tmp_path / "out").exists()
 
 
@@ -294,7 +301,7 @@ def test_cli_refuses_to_matte_a_file_over_itself(tmp_path):
     # Spelled differently, so only a resolved-path check catches it.
     result = CliRunner().invoke(app, ["matte", str(src), str(tmp_path / "." / "a.png")])
     assert result.exit_code != 0
-    assert "written over the source" in " ".join(result.output.replace("│", " ").split())
+    assert "written over the source" in _plain(result.output)
     assert src.read_bytes() == before
 
 
@@ -306,7 +313,7 @@ def test_cli_refuses_a_batch_into_its_own_source_directory(tmp_path):
     before = _digest(src)
     result = CliRunner().invoke(app, ["matte", str(src), str(src)])
     assert result.exit_code != 0
-    assert "written over the source" in " ".join(result.output.replace("│", " ").split())
+    assert "written over the source" in _plain(result.output)
     assert _digest(src) == before
 
 
@@ -317,7 +324,7 @@ def test_cli_refuses_a_names_row_mapping_onto_another_source(tmp_path):
     before = _digest(src)
     result = CliRunner().invoke(app, ["matte", str(src), str(src), "--names", str(names)])
     assert result.exit_code != 0
-    assert "written over the source" in " ".join(result.output.replace("│", " ").split())
+    assert "written over the source" in _plain(result.output)
     assert _digest(src) == before
 
 
