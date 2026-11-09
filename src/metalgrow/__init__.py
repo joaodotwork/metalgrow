@@ -1,4 +1,9 @@
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # visible to type checkers; loaded lazily at runtime (below)
+    from metalgrow.device import get_device
+    from metalgrow.upscaler import Upscaler
 
 __all__ = ["Upscaler", "get_device"]
 
